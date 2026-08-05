@@ -1,0 +1,8 @@
+.venv/
+.python-packages/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/*.db
+reports/generated/
+*.log

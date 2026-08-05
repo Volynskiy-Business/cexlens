@@ -1,0 +1,30 @@
+campaign:
+  name: haifa-home-baseline
+  timezone: Asia/Jerusalem
+  duration_days: 7
+  windows_local: ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]
+exchanges:
+  priority: [binance, bybit, okx, bitget, gate, mexc, kucoin, kraken, bingx, phemex]
+symbols:
+  major: [BTCUSDT, ETHUSDT, SOLUSDT]
+probes:
+  iterations: 20
+  timeout_seconds: 10
+  websocket_observation_seconds: 600
+  bounded_concurrency: 5
+  per_exchange_concurrency: 1
+  jitter_ms: 250
+scoring:
+  profile: manual-futures-scalping
+  weights:
+    websocket: 0.25
+    rest_p95: 0.20
+    tail_stability: 0.15
+    reliability: 0.10
+    freshness: 0.10
+    market_quality: 0.10
+    market_breadth: 0.05
+    accessibility: 0.05
+storage_path: data/cexlatency.db
+report_directory: reports/generated
+
