@@ -56,7 +56,7 @@ async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int 
                 async def exchange_bounded(awaitable):
                     async with exchange_semaphore:
                         return await bounded(awaitable)
-                store.register_adapter(exchange_id,adapter.display_name,__version__,await adapter.discover_public_endpoints(),await adapter.list_supported_markets(),{"websocket":adapter.websocket_supported,"timestamp_fields":adapter.timestamp_fields,"sequence_contiguous":adapter.sequence_contiguous,"rate_limit_policy":adapter.rate_limit_note,"notes":adapter.notes})
+                store.register_adapter(exchange_id,adapter.display_name,__version__,await adapter.discover_public_endpoints(),await adapter.list_supported_markets(),{"websocket":adapter.websocket_supported,"timestamp_fields":adapter.timestamp_fields,"rest_timestamp_fields":adapter.rest_timestamp_fields,"sequence_contiguous":adapter.sequence_contiguous,"rate_limit_policy":adapter.rate_limit_note,"notes":adapter.notes})
                 tls_context=ssl.create_default_context(); tls_context.set_alpn_protocols(["h2","http/1.1"])
                 diagnostic_urls=list(dict.fromkeys(url for url in (adapter.rest_url,adapter.ws_url) if url))
                 diagnostic_samples=[]
@@ -103,6 +103,6 @@ async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int 
                 store.finish_run(run_id,"FAILED"); logger.emit("benchmark_completed",run_id=run_id,status="FAILED",exception_type=type(exc).__name__,detail=str(exc)); raise
         samples=store.samples(run_id); ws=store.websockets(run_id); markets=store.orderbooks(run_id); rankings=rank(samples,ws,exchange_ids,config.scoring.weights,markets,required_symbol_count=len(config.benchmark_symbols()))
         for row in rankings: store.save_score(run_id,row)
-        paths=generate_reports(run_id,rankings,samples,config.report_directory,ws,markets,store.routes(run_id))
+        paths=generate_reports(run_id,rankings,samples,config.report_directory,ws,markets,store.routes(run_id),config.campaign.timezone)
         for kind,path in paths.items(): store.add_report(run_id,kind,path)
     return run_id,paths,rankings

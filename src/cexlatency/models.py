@@ -77,6 +77,7 @@ class WebSocketSummary:
     stale_periods: int = 0
     reconnect_ms: float | None = None
     sequence_check_supported: bool = False
+    observation_seconds: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

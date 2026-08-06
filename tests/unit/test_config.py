@@ -25,6 +25,11 @@ def test_time_window_validation():
         CampaignConfig(windows_local=["25:99"])
 
 
+def test_timezone_validation_is_deterministic():
+    with pytest.raises(ValidationError,match="unknown IANA timezone"):
+        CampaignConfig(timezone="Mars/Olympus")
+
+
 def test_retention_is_disabled_by_default_and_bounded():
     assert RetentionConfig().benchmark_days is None
     with pytest.raises(ValidationError): RetentionConfig(benchmark_days=0)

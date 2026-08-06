@@ -100,7 +100,7 @@ async def _async_main(args: argparse.Namespace) -> int:
                 report_id=args.run_id or store.latest_run_id()
                 if not report_id: raise ValueError("no benchmark run found")
                 samples=store.samples(report_id); ws=store.websockets(report_id); markets=store.orderbooks(report_id); routes=store.routes(report_id); window_count=1
-            rankings=rank(samples,ws,sorted({s['exchange_id'] for s in samples}),config.scoring.weights,markets,window_count,len(config.benchmark_symbols())); paths=generate_reports(report_id,rankings,samples,config.report_directory,ws,markets,routes)
+            rankings=rank(samples,ws,sorted({s['exchange_id'] for s in samples}),config.scoring.weights,markets,window_count,len(config.benchmark_symbols())); paths=generate_reports(report_id,rankings,samples,config.report_directory,ws,markets,routes,config.campaign.timezone)
         print(json.dumps(paths,indent=2)); return 0
     if args.command=="compare":
         if len(args.run_id)!=2: raise ValueError("compare requires exactly two --run-id values")

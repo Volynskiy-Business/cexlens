@@ -4,7 +4,9 @@ Every failed probe is stored with a classification rather than discarded. Rankin
 
 The host record contains only an anonymized host ID, a host-salted SHA-256 public-IP hash, interfaces, ISP label, OS/Python/timezone, and clock diagnostic. Raw public IP is not persisted. Every run snapshots configuration, Git SHA, adapter capabilities, endpoints, and symbol mappings.
 
-`HIGH` confidence requires broad sampling, very high success, multiple daily windows, and, where timestamp lag is used, verified clock quality. A single smoke run will normally remain `LOW` or `INSUFFICIENT`.
+`HIGH` confidence requires broad sampling, very high success, multiple daily windows, at least 1,800 seconds of accumulated WebSocket observation per exchange, and verified clock quality. A single smoke run will normally remain `LOW` or `INSUFFICIENT`.
+
+Raw probe CSV exports retain the SQLite `metadata_json` field so server timestamps, monotonic measurement boundaries, resolver provenance, rate-limit headers, and TLS negotiation details remain auditable outside the database.
 
 Campaign windows have an explicit grace period. A pending window older than that period becomes `MISSED` and is never relabeled with late measurements. The complete campaign definition is SHA-256 fingerprinted and immutable under its name.
 

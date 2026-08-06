@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS websocket_events_summary (id INTEGER PRIMARY KEY, ses
 CREATE TABLE IF NOT EXISTS orderbook_quality_summary (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, symbol TEXT, summary_json TEXT);
 CREATE TABLE IF NOT EXISTS route_diagnostics (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, endpoint TEXT, captured_at TEXT, output TEXT, summary_json TEXT);
 CREATE TABLE IF NOT EXISTS exchange_capabilities (exchange_id TEXT PRIMARY KEY, capabilities_json TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS score_snapshots (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, exchange_id TEXT NOT NULL, overall_score REAL, confidence TEXT NOT NULL, components_json TEXT NOT NULL, raw_metrics_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS score_snapshots (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, exchange_id TEXT NOT NULL, overall_score REAL, confidence TEXT NOT NULL, behavior_label TEXT, components_json TEXT NOT NULL, raw_metrics_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS report_artifacts (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS errors (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, endpoint TEXT, probe_type TEXT, timestamp TEXT, exception_type TEXT, retry_number INTEGER, classification TEXT, recoverable INTEGER, detail TEXT);
 CREATE TABLE IF NOT EXISTS campaign_windows (campaign_name TEXT NOT NULL, window_utc TEXT NOT NULL, local_label TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', run_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL, claimed_by TEXT, lease_expires_at TEXT, PRIMARY KEY(campaign_name, window_utc));
@@ -40,6 +40,7 @@ class Storage:
         self._ensure_column("campaign_windows","claimed_by","TEXT")
         self._ensure_column("campaign_windows","lease_expires_at","TEXT")
         self._ensure_column("route_diagnostics","summary_json","TEXT")
+        self._ensure_column("score_snapshots","behavior_label","TEXT")
 
     def _ensure_column(self, table: str, column: str, declaration: str) -> None:
         columns={row[1] for row in self.connection.execute(f"PRAGMA table_info({table})")}
@@ -116,7 +117,7 @@ class Storage:
         return rows
 
     def save_score(self, run_id: str, row: dict[str, Any]) -> None:
-        self.connection.execute("INSERT INTO score_snapshots (run_id,exchange_id,overall_score,confidence,components_json,raw_metrics_json) VALUES (?,?,?,?,?,?)",(run_id,row["exchange_id"],row.get("overall_score"),row["confidence"],json.dumps(row["components"]),json.dumps(row["raw_metrics"]))); self.connection.commit()
+        self.connection.execute("INSERT INTO score_snapshots (run_id,exchange_id,overall_score,confidence,behavior_label,components_json,raw_metrics_json) VALUES (?,?,?,?,?,?,?)",(run_id,row["exchange_id"],row.get("overall_score"),row["confidence"],row.get("behavior_label"),json.dumps(row["components"]),json.dumps(row["raw_metrics"]))); self.connection.commit()
 
     def latest_run_id(self) -> str | None:
         row=self.connection.execute("SELECT run_id FROM benchmark_runs ORDER BY started_at DESC LIMIT 1").fetchone(); return row[0] if row else None

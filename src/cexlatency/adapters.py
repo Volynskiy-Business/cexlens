@@ -26,6 +26,7 @@ class AdapterSpec:
     ws_subscribe: dict[str, Any] | None = None
     symbol_template: str = "{base}USDT"
     timestamp_fields: tuple[str, ...] = ("E", "ts", "time", "timestamp")
+    rest_timestamp_fields: tuple[str, ...] = ("serverTime", "timeSecond", "timeNano", "time", "ts", "timestamp")
     notes: str = ""
     market_metadata_url: str | None = None
     orderbook_url: str | None = None

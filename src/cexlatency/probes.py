@@ -94,6 +94,8 @@ async def probe_tls(run_id: str, adapter: AdapterSpec, url: str, timeout: float,
 async def probe_rest(run_id: str, adapter: AdapterSpec, client: httpx.AsyncClient | None, timeout: float, fresh: bool = False) -> ProbeSample:
     own_client = client is None or fresh
     active = httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers={"User-Agent": "cexlatency/0.1 public-benchmark"}) if own_client else client
+    started_wall = utc_now()
+    started_ns = time.perf_counter_ns()
     started = time.perf_counter()
     ttfb = None
     try:
@@ -101,10 +103,27 @@ async def probe_rest(run_id: str, adapter: AdapterSpec, client: httpx.AsyncClien
             ttfb = (time.perf_counter() - started) * 1000
             body = await response.aread()
         elapsed = (time.perf_counter() - started) * 1000
+        ended_ns = time.perf_counter_ns()
+        ended_wall = utc_now()
+        server_timestamp = None
+        try:
+            server_timestamp = _find_timestamp(json.loads(body), adapter.rest_timestamp_fields)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
         ok = 200 <= response.status_code < 400
-        return ProbeSample(run_id, adapter.exchange_id, "rest_fresh" if fresh else "rest_reuse", adapter.rest_url, ok, utc_now(), duration_ms=elapsed, ttfb_ms=ttfb, status_code=response.status_code, payload_bytes=len(body), error_class=None if ok else ("HTTP_RATE_LIMIT" if response.status_code == 429 else "HTTP_SERVER_ERROR"), metadata={"rate_limit_headers": {k: v for k, v in response.headers.items() if "limit" in k.lower() or "remaining" in k.lower()},"retry_count":0})
+        metadata = {
+            "rate_limit_headers": {k: v for k, v in response.headers.items() if "limit" in k.lower() or "remaining" in k.lower()},
+            "retry_count": 0,
+            "local_monotonic_started_ns": started_ns,
+            "local_monotonic_ended_ns": ended_ns,
+            "local_receive_wall_clock_utc": ended_wall,
+            "server_timestamp_epoch_seconds": server_timestamp,
+            "server_timestamp_utc": datetime.fromtimestamp(server_timestamp, timezone.utc).isoformat() if server_timestamp is not None else None,
+            "server_timestamp_quality": "EXCHANGE_PROVIDED" if server_timestamp is not None else "ABSENT",
+        }
+        return ProbeSample(run_id, adapter.exchange_id, "rest_fresh" if fresh else "rest_reuse", adapter.rest_url, ok, started_wall, duration_ms=elapsed, ttfb_ms=ttfb, status_code=response.status_code, payload_bytes=len(body), error_class=None if ok else ("HTTP_RATE_LIMIT" if response.status_code == 429 else "HTTP_SERVER_ERROR"), metadata=metadata)
     except Exception as exc:
-        return ProbeSample(run_id, adapter.exchange_id, "rest_fresh" if fresh else "rest_reuse", adapter.rest_url, False, utc_now(), duration_ms=(time.perf_counter()-started)*1000, ttfb_ms=ttfb, error_class="HTTP_TIMEOUT" if isinstance(exc, httpx.TimeoutException) else "HTTP_ERROR", error_detail=str(exc),metadata={"retry_count":0})
+        return ProbeSample(run_id, adapter.exchange_id, "rest_fresh" if fresh else "rest_reuse", adapter.rest_url, False, started_wall, duration_ms=(time.perf_counter()-started)*1000, ttfb_ms=ttfb, error_class="HTTP_TIMEOUT" if isinstance(exc, httpx.TimeoutException) else "HTTP_ERROR", error_detail=str(exc),metadata={"retry_count":0,"local_monotonic_started_ns":started_ns,"local_monotonic_ended_ns":time.perf_counter_ns(),"local_receive_wall_clock_utc":utc_now(),"server_timestamp_quality":"UNAVAILABLE_AFTER_ERROR"})
     finally:
         if own_client:
             await active.aclose()
@@ -114,8 +133,11 @@ def _find_timestamp(value: object, fields: tuple[str, ...]) -> float | None:
     if isinstance(value, dict):
         for field in fields:
             candidate = value.get(field)
-            if isinstance(candidate, (int, float)):
-                timestamp = float(candidate)
+            if isinstance(candidate, (int, float, str)):
+                try:
+                    timestamp = float(candidate)
+                except ValueError:
+                    continue
                 if timestamp > 1e17: timestamp /= 1e9
                 elif timestamp > 1e14: timestamp /= 1e6
                 elif timestamp > 1e11: timestamp /= 1e3
@@ -231,7 +253,8 @@ async def probe_websocket(run_id: str, adapter: AdapterSpec, symbol: str, durati
                             if ts: lags.append((now_wall-ts)*1000)
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         malformed += 1
-        observed = max(time.perf_counter()-observation_started, 0.001)
+                observation_ended=time.perf_counter()
+        observed = max(observation_ended-observation_started, 0.001)
         reconnect_ms=None; reconnect_failures=0
         try:
             reconnect_started=time.perf_counter()
@@ -248,6 +271,6 @@ async def probe_websocket(run_id: str, adapter: AdapterSpec, symbol: str, durati
         median_interval=percentile(intervals,.5) if intervals else None
         stale_threshold=max(1000.0,3*median_interval) if median_interval is not None else 1000.0
         stale_periods=sum(value>stale_threshold for value in intervals)
-        return WebSocketSummary(run_id,adapter.exchange_id,reported_url,symbol,messages>0,handshake_ms=handshake,ack_ms=ack_ms,first_message_ms=first_ms,messages=messages,malformed_messages=malformed,disconnects=reconnect_failures,message_rate_hz=messages/observed,mean_interval_ms=statistics.fmean(intervals) if intervals else None,median_interval_ms=median_interval,p95_interval_ms=percentile(intervals,.95) if intervals else None,median_observed_lag_ms=percentile(lags,.5) if lags else None,timestamp_quality=timestamp_quality,error_class=None if messages else "INSUFFICIENT_SAMPLE",error_detail=None if messages else "no market-data message observed",heartbeat_rtt_ms=heartbeat_rtt,sequence_gaps=sequence_gaps,duplicate_messages=duplicates,stale_periods=stale_periods,reconnect_ms=reconnect_ms,sequence_check_supported=adapter.sequence_contiguous)
+        return WebSocketSummary(run_id,adapter.exchange_id,reported_url,symbol,messages>0,handshake_ms=handshake,ack_ms=ack_ms,first_message_ms=first_ms,messages=messages,malformed_messages=malformed,disconnects=reconnect_failures,message_rate_hz=messages/observed,mean_interval_ms=statistics.fmean(intervals) if intervals else None,median_interval_ms=median_interval,p95_interval_ms=percentile(intervals,.95) if intervals else None,median_observed_lag_ms=percentile(lags,.5) if lags else None,timestamp_quality=timestamp_quality,error_class=None if messages else "INSUFFICIENT_SAMPLE",error_detail=None if messages else "no market-data message observed",heartbeat_rtt_ms=heartbeat_rtt,sequence_gaps=sequence_gaps,duplicate_messages=duplicates,stale_periods=stale_periods,reconnect_ms=reconnect_ms,sequence_check_supported=adapter.sequence_contiguous,observation_seconds=observed)
     except Exception as exc:
         return WebSocketSummary(run_id, adapter.exchange_id, adapter.ws_url or adapter.ws_token_url or "", symbol, False, error_class="WS_HANDSHAKE_FAILURE" if messages == 0 else "WS_DISCONNECT", error_detail=str(exc), messages=messages, malformed_messages=malformed,disconnects=1 if messages else 0)

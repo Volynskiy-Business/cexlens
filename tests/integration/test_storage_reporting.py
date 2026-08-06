@@ -13,14 +13,18 @@ def test_sqlite_round_trip_and_all_report_formats(tmp_path):
         store.finish_run("run1")
         samples = store.samples("run1")
     rankings = [{"exchange_id": "binance", "overall_score": 80.0, "confidence": "MEDIUM", "evidence_coverage": 1.0, "components": {}, "raw_metrics": {"rest_median": 42, "rest_p95": 42, "rest_p99": 42}}]
-    paths = generate_reports("run1", rankings, samples, tmp_path / "reports")
+    paths = generate_reports("run1", rankings, samples, tmp_path / "reports", timezone_name="Asia/Jerusalem")
     assert set(paths) == {"html", "markdown", "json", "rankings_csv", "samples_csv", "websockets_csv", "market_quality_csv", "statistics_csv"}
     assert all((tmp_path / "reports" / "run1" / name).exists() for name in ("dashboard.html", "executive-report.md", "summary.json", "rankings.csv", "probe_samples.csv", "websocket_sessions.csv", "market_quality.csv", "metric_statistics.csv"))
     summary=json.loads((tmp_path / "reports" / "run1" / "summary.json").read_text())
     assert summary["recommendation"] == "binance"
     assert summary["recommendations"]["winner_rationale"]["confidence"] == "MEDIUM"
+    assert summary["recommendations"]["details"]["best_low_latency"]["reason"].startswith("lowest measured REST p95")
+    assert summary["timezone"] == "Asia/Jerusalem"
     assert summary["probe_and_session_statistics"][0]["metric"] == "total_duration_ms"
     dashboard=(tmp_path / "reports" / "run1" / "dashboard.html").read_text(encoding="utf-8")
+    assert "Asia/Jerusalem" in dashboard
+    assert "metadata_json" in (tmp_path / "reports" / "run1" / "probe_samples.csv").read_text(encoding="utf-8").splitlines()[0]
     for section in ("Executive Overview","Exchange Ranking","Latency Distribution","Tail Latency","WebSocket Stability","Time-of-Day Comparison","Route Diagnostics","Order-Book Quality","Futures Coverage","Raw Evidence","Methodology","Limitations","Jitter Over Time","Reconnect Duration"):
         assert section in dashboard
 
