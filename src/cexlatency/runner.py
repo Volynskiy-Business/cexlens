@@ -36,6 +36,10 @@ def _git_sha() -> str | None:
 def _host_id() -> str: return hashlib.sha256(socket.gethostname().encode()).hexdigest()[:16]
 
 
+def _continue_rest_probing(iteration: int, minimum_iterations: int, deadline: float | None, now: float) -> bool:
+    return iteration < minimum_iterations or (deadline is not None and now < deadline)
+
+
 async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int | None=None, ws_duration: int | None=None, progress: Callable[[str],None]=print, duration_seconds: int | None=None) -> tuple[str,dict[str,str],list[dict]]:
     run_id=uuid.uuid4().hex[:12]; iterations=iterations or config.probes.iterations; ws_duration=ws_duration if ws_duration is not None else config.probes.websocket_observation_seconds
     logger=JsonEventLogger(Path(config.storage_path).with_suffix(".jsonl"))
@@ -76,12 +80,16 @@ async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int 
                     warmup=await exchange_bounded(probe_rest(run_id,adapter,client,config.probes.timeout_seconds,False)); warmup.probe_type="rest_warmup"; store.add_sample(warmup)
                     if not warmup.success: logger.probe_error(run_id,exchange_id,warmup.endpoint,warmup.probe_type,warmup.error_class,warmup.error_detail)
                 deadline=time.monotonic()+duration_seconds if duration_seconds else None; i=0
-                while i<iterations or (deadline is not None and time.monotonic()<deadline and i<500):
+                while _continue_rest_probing(i,iterations,deadline,time.monotonic()):
                     for sample in (await exchange_bounded(probe_rest(run_id,adapter,client,config.probes.timeout_seconds,False)),await exchange_bounded(probe_rest(run_id,adapter,None,config.probes.timeout_seconds,True))):
                         store.add_sample(sample)
                         if not sample.success: logger.probe_error(run_id,exchange_id,sample.endpoint,sample.probe_type,sample.error_class,sample.error_detail)
                     i+=1
-                    if i<iterations or (deadline is not None and time.monotonic()<deadline): await asyncio.sleep(random.uniform(0,config.probes.jitter_ms/1000))
+                    if _continue_rest_probing(i,iterations,deadline,time.monotonic()):
+                        delay=random.uniform(0,config.probes.jitter_ms/1000)
+                        if deadline is not None:
+                            delay=min(max(delay,1.0),max(0.0,deadline-time.monotonic()))
+                        if delay>0: await asyncio.sleep(delay)
                 if ws_duration>0:
                     for symbol in config.benchmark_symbols():
                         ws_sample=await exchange_bounded(probe_websocket(run_id,adapter,symbol,ws_duration,config.probes.timeout_seconds,clock.quality)); store.add_websocket(ws_sample)

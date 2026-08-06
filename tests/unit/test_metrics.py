@@ -18,6 +18,10 @@ def test_summary_contains_robust_and_tail_metrics():
     assert "mad" in result and "jitter" in result
 
 
+def test_outlier_count_uses_robust_median_deviation():
+    assert summarize([10,10,10,100])["outlier_count"] == 1
+
+
 def test_confidence_fails_closed():
     assert confidence(2, 1.0) == "INSUFFICIENT"
     assert confidence(20, 1.0, 6, "VERIFIED", 1800) == "HIGH"

@@ -1,5 +1,5 @@
 from cexlatency.config import ScoringConfig
-from cexlatency.scoring import _behavior_label, rank
+from cexlatency.scoring import _behavior_label, _lower_is_better, rank
 
 
 def sample(exchange, duration, success=True, run_id="run"):
@@ -59,3 +59,11 @@ def test_behavior_labels_are_explicit_and_evidence_aware():
     assert _behavior_label("MEDIUM", 20, 80) == "stable_but_slower"
     assert _behavior_label("MEDIUM", 20, 20) == "consistently_poor"
     assert _behavior_label("MEDIUM", 60, 60) == "balanced"
+
+
+def test_latency_normalization_is_direction_aware_and_bounded():
+    scores=_lower_is_better({"fast":10,"middle":20,"slow":30,"missing":None})
+    assert scores["fast"] == 100
+    assert 0 < scores["middle"] < 100
+    assert scores["slow"] == 0
+    assert scores["missing"] == 0

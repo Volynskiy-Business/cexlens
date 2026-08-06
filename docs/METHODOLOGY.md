@@ -8,6 +8,8 @@ Observed timestamp lag equals local UTC receive time minus the exchange event ti
 
 Campaigns use both a global concurrency bound and a configurable per-exchange semaphore, randomized inter-probe jitter, conservative public endpoints, and short payloads. A seven-day conclusion requires all configured time windows; a smoke run only validates mechanics.
 
+Fixed-duration REST benchmarks honor the requested wall-clock duration without a hidden iteration cutoff and enforce at least one second between iteration pairs. Fixed-iteration campaign windows retain their configured randomized jitter.
+
 Each venue receives a separately labeled REST warm-up before measured fresh/reused iterations. Warm-up samples remain auditable in SQLite but are excluded from distributions and scoring.
 
 Order-book snapshots are normalized into best bid/ask, spread in basis points, and approximate quote notional within 5, 10, and 25 bps of mid. Recent public trades provide a bounded sample count, sample span, and observed trades per second. This is a recent-sample frequency estimate, not a 24-hour average. Contract-size conventions differ by venue; depth, volume, open interest, funding, and trades are exchange-provided and are not independently audited. Every configured symbol group is flattened without duplicates; the default campaign collects BTCUSDT, ETHUSDT, and SOLUSDT.

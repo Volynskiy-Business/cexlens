@@ -67,6 +67,7 @@ cexlatency --config config/smoke.yaml benchmark --exchange binance --iterations 
 
 See [Architecture](docs/ARCHITECTURE.md), [Methodology](docs/METHODOLOGY.md), [Scoring](docs/SCORING_MODEL.md), and [Windows setup](docs/WINDOWS_SETUP.md).
 An evidence-labeled [example smoke benchmark](docs/EXAMPLE_BENCHMARK.md) is included.
+The [specification traceability matrix](docs/SPEC_TRACEABILITY.md) distinguishes verified implementation evidence from the pending seven-day acceptance evidence.
 
 ## Status
 
