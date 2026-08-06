@@ -23,15 +23,10 @@ try {
     if ($wslRoot.Contains("'")) { throw 'Project path containing an apostrophe is unsupported.' }
 
     $script = "cd '$wslRoot' && exec env PYTHONPATH=src python3 -m cexlatency.cli campaign --config config/haifa-7day.yaml --start-date $StartDate --daemon --max-windows 42 --poll-seconds 30 >> data/campaign-daemon.log 2>&1"
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = 'wsl.exe'
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    @('-e', 'bash', '-lc', $script) | ForEach-Object { [void]$psi.ArgumentList.Add($_) }
-    $process = [System.Diagnostics.Process]::Start($psi)
-    $process.WaitForExit()
-    Write-WatchdogLog "runner exit=$($process.ExitCode)"
-    exit $process.ExitCode
+    & wsl.exe -e bash -lc $script
+    $runnerExitCode = $LASTEXITCODE
+    Write-WatchdogLog "runner exit=$runnerExitCode"
+    exit $runnerExitCode
 } catch {
     Write-WatchdogLog "runner failed at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message); stack=$($_.ScriptStackTrace)"
     exit 1
