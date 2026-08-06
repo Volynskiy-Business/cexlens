@@ -20,4 +20,4 @@ def test_summary_contains_robust_and_tail_metrics():
 def test_confidence_fails_closed():
     assert confidence(2, 1.0) == "INSUFFICIENT"
     assert confidence(20, 1.0, 6, "VERIFIED") == "HIGH"
-
+    assert confidence(200, 1.0, 1, "VERIFIED") == "MEDIUM"

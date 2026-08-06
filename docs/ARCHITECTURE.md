@@ -27,6 +27,9 @@ flowchart LR
 - `metrics.py` and `scoring.py`: derived facts and rankings.
 - `reporting.py`: artifacts only.
 - `runner.py`: bounded orchestration and safe cancellation.
+- `market_quality.py`: normalized public order-book and market-suitability evidence.
+- `campaign.py`: immutable, resumable local/UTC campaign windows.
+- `diagnostics.py`: clock, anonymized network identity, and safe route diagnostics.
+- `json_logging.py`: append-only structured operational events.
 
 No private API or order method exists in the package.
-

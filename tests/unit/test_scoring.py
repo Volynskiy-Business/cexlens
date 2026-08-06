@@ -17,3 +17,11 @@ def test_missing_data_is_penalized_and_insufficient():
     assert result["confidence"] == "INSUFFICIENT"
     assert result["overall_score"] <= 49
 
+
+def test_incomplete_exchange_cannot_outrank_complete_evidence():
+    samples=[sample("complete",x) for x in range(10,30)]+[sample("incomplete",1)]
+    ws=[{"exchange_id":"complete","first_message_ms":50,"p95_interval_ms":10,"disconnects":0}]
+    markets=[{"exchange_id":"complete","success":True,"spread_bps":1,"bid_depth_10bps":100,"ask_depth_10bps":100,"quote_volume_24h":1000,"futures_market_count":10} for _ in range(3)]
+    result=rank(samples,ws,["complete","incomplete"],ScoringConfig().weights,markets)
+    assert result[0]["exchange_id"] == "complete"
+    assert result[1]["confidence"] == "INSUFFICIENT"

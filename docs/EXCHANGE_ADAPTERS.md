@@ -2,16 +2,15 @@
 
 | Exchange | Public REST | Public WebSocket | Default futures symbol form | MVP status |
 |---|---|---|---|---|
-| Binance | Yes | Yes | `BTCUSDT` | Declared, smoke-tested selectively |
-| Bybit | Yes | Yes | `BTCUSDT` | Declared |
-| OKX | Yes | Yes | `BTC-USDT-SWAP` | Declared |
-| Bitget | Yes | Yes | `BTCUSDT` | Declared |
-| Gate.io | Yes | Yes | `BTC_USDT` | Declared |
-| MEXC | Yes | Yes | `BTC_USDT` | Declared |
-| KuCoin Futures | Yes | Dynamic token required | `BTCUSDTM` | REST only / partial WS |
-| Kraken Futures | Yes | Yes | `PI_XBTUSD` | Declared; canonical BTC alias needs follow-up |
-| BingX | Yes | Yes | `BTC-USDT` | Declared |
-| Phemex | Yes | Yes | `BTCUSDT` | Declared |
+| Binance | Yes | Yes | `BTCUSDT` | Live smoke verified |
+| Bybit | Yes | Yes | `BTCUSDT` | Live smoke verified |
+| OKX | Yes | Yes | `BTC-USDT-SWAP` | Live smoke verified |
+| Bitget | Yes | Yes | `BTCUSDT` | Live smoke verified |
+| Gate.io | Yes | Yes | `BTC_USDT` | Live smoke verified |
+| MEXC | Yes | Yes | `BTC_USDT` | Live smoke verified |
+| KuCoin Futures | Yes | Dynamic public token | `XBTUSDTM` | Live smoke verified |
+| Kraken Futures | Yes | Yes | `PI_XBTUSD` | Live smoke verified |
+| BingX | Yes | Yes, gzip frames | `BTC-USDT` | Live smoke verified |
+| Phemex | Yes | Yes | `BTCUSDT` | Live smoke verified |
 
-“Declared” does not mean universally reachable. The `discover` command reports configuration; live evidence belongs to individual run IDs. Endpoint changes must be fixture-tested before adapter edits are accepted.
-
+Live verification refers to smoke run `30c515ac2072` from the user's connection on 2026-08-06: 10/10 REST, 10/10 WebSocket, and 30/30 order-book snapshots. It does not guarantee future or universal reachability. Every adapter has a sanitized fixture.

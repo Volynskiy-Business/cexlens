@@ -14,6 +14,9 @@ class ProbeConfig(BaseModel):
     bounded_concurrency: int = Field(default=5, ge=1, le=20)
     per_exchange_concurrency: int = Field(default=1, ge=1, le=5)
     jitter_ms: int = Field(default=250, ge=0, le=5000)
+    market_quality: bool = True
+    route_diagnostics: bool = False
+    route_max_hops: int = Field(default=20, ge=1, le=64)
 
 
 class CampaignConfig(BaseModel):
@@ -71,4 +74,3 @@ def load_config(path: str | Path) -> AppConfig:
     config_path = Path(path)
     raw: dict[str, Any] = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     return AppConfig.model_validate(raw)
-

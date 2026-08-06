@@ -1,11 +1,9 @@
 # Known limitations
 
-- KuCoin Futures WebSocket token discovery is not implemented.
-- Kraken's XBT/BTC mapping needs adapter-specific alias support.
-- Market-depth, spread, open-interest, funding, and instrument breadth are not yet normalized; scoring holds those dimensions neutral.
-- The `campaign` command executes a campaign unit but does not yet persist a resumable seven-day scheduler state.
-- Route diagnostics and NTP-offset detection are documented but not automated.
-- WebSocket sequence gaps and reconnect recovery are represented in the model but need per-venue parsers.
+- The full seven-day, six-window-per-day Haifa campaign has not yet elapsed, so no final venue recommendation is justified.
+- Depth is approximate quote notional; contract multipliers and exchange-reported volume conventions can differ.
+- Sequence-gap evaluation is disabled for snapshot-style channels without a guaranteed contiguous counter.
+- Route diagnostics depend on `tracert`, `traceroute`, or `tracepath` availability and cannot locate a matching engine.
+- NTP offset is recorded when the operating system exposes it; otherwise synchronization state is recorded without an exact offset.
 - Live integration checks depend on geography, exchange policy, DNS, and internet availability.
 - Public market-data latency is not private order acknowledgement latency.
-

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cex-latency-platform"
-version = "0.1.0"
+version = "0.2.0"
 description = "Auditable public-endpoint latency intelligence for centralized exchanges"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -29,4 +29,4 @@ packages = ["src/cexlatency"]
 testpaths = ["tests"]
 addopts = "-q"
 asyncio_mode = "auto"
-
+markers = ["live: conservative opt-in tests against public exchange endpoints"]

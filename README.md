@@ -12,11 +12,13 @@ CEXLENS is an evidence-first benchmarking platform for comparing public futures-
 
 ## MVP capabilities
 
-- Declarative registry for Binance, Bybit, OKX, Bitget, Gate.io, MEXC, KuCoin Futures, Kraken Futures, BingX, and Phemex.
-- Async DNS, TCP, TLS, fresh-connection REST, reused-connection REST, and public WebSocket probes.
+- Consistent adapter contract for Binance, Bybit, OKX, Bitget, Gate.io, MEXC, KuCoin Futures, Kraken Futures, BingX, and Phemex.
+- Async first/warm DNS, TCP, TLS, fresh/reused REST, heartbeat/reconnect WebSocket, route, and clock-quality diagnostics.
+- Three-symbol order-book telemetry with spread, 5/10/25 bps depth, volume, open interest, funding, and futures coverage.
 - Robust p50/p75/p90/p95/p99 statistics, jitter, MAD, outlier count, failure rate, and confidence grading.
 - SQLite evidence store with normalized entities and explicit error records.
-- HTML dashboard, Markdown executive report, JSON summary, and CSV exports.
+- Multi-section HTML dashboard, Markdown executive report, JSON summary, and layer-specific CSV exports.
+- Resumable UTC/local campaign windows and aggregated multi-window reporting.
 - Native Windows 11 workflow with PowerShell; Docker is not required.
 
 ## Quick start (PowerShell)
@@ -44,8 +46,8 @@ Global options such as `--config` and `--json` precede the command. Generated da
 |---|---|
 | `discover` | Show registered public endpoints and support status |
 | `benchmark` | Run bounded one-shot probes for an exchange or group |
-| `campaign` | Execute the configured campaign unit; scheduling is documented separately |
-| `report` | Regenerate reports from a persisted run |
+| `campaign` | Claim and execute resumable UTC/local campaign windows |
+| `report` | Regenerate one run or aggregate a completed campaign |
 | `compare` | Compare two score snapshots |
 | `validate` | Deterministically validate config, registry, and safety state |
 
@@ -66,7 +68,7 @@ An evidence-labeled [example smoke benchmark](docs/EXAMPLE_BENCHMARK.md) is incl
 
 ## Status
 
-This repository is an MVP. Public endpoints can be geo-blocked, changed, or rate-limited. KuCoin WebSocket requires dynamic public-token discovery and is explicitly marked partial. Market-depth normalization and seven-day scheduling remain roadmap work. See [Known limitations](docs/LIMITATIONS.md) and [Acceptance report](docs/ACCEPTANCE_REPORT.md).
+The production-MVP implementation is complete, but a location-specific recommendation remains evidence-gated. Public endpoints can be geo-blocked, changed, or rate-limited, and the configured seven-day Haifa campaign has not yet elapsed. See [Known limitations](docs/LIMITATIONS.md) and [Acceptance report](docs/ACCEPTANCE_REPORT.md).
 
 ## License
 

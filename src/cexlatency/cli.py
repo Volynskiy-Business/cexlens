@@ -11,20 +11,37 @@ from .adapters import REGISTRY
 from .config import load_config
 from .reporting import generate_reports
 from .runner import benchmark
+from .campaign import build_schedule, run_campaign
 from .scoring import rank
 from .storage import Storage
+
+
+def parse_duration(value: str) -> int:
+    units={"s":1,"m":60,"h":3600}
+    if len(value)<2 or value[-1].lower() not in units:
+        raise argparse.ArgumentTypeError("duration must use s, m, or h suffix (for example 30s, 10m, 2h)")
+    try: amount=float(value[:-1])
+    except ValueError as exc: raise argparse.ArgumentTypeError("duration must be numeric") from exc
+    seconds=int(amount*units[value[-1].lower()])
+    if seconds<1 or seconds>7*24*3600: raise argparse.ArgumentTypeError("duration must be between 1 second and 7 days")
+    return seconds
 
 
 def parser() -> argparse.ArgumentParser:
     p=argparse.ArgumentParser(prog="cexlatency",description="Public-endpoint CEX latency intelligence; never places orders")
     p.add_argument("--config",default="config/haifa-7day.yaml"); p.add_argument("--json",action="store_true",dest="json_output")
     sub=p.add_subparsers(dest="command",required=True)
-    sub.add_parser("discover")
-    b=sub.add_parser("benchmark"); b.add_argument("--exchange",action="append"); b.add_argument("--group",default="priority"); b.add_argument("--iterations",type=int); b.add_argument("--ws-duration",type=int); b.add_argument("--dry-run",action="store_true")
-    c=sub.add_parser("campaign"); c.add_argument("--dry-run",action="store_true"); c.add_argument("--iterations",type=int)
-    r=sub.add_parser("report"); r.add_argument("--run-id")
-    v=sub.add_parser("validate")
-    x=sub.add_parser("compare"); x.add_argument("--run-id",action="append",required=True)
+    def command(name: str) -> argparse.ArgumentParser:
+        result=sub.add_parser(name)
+        result.add_argument("--config",default=argparse.SUPPRESS)
+        result.add_argument("--json",action="store_true",dest="json_output",default=argparse.SUPPRESS)
+        return result
+    command("discover")
+    b=command("benchmark"); b.add_argument("--exchange",action="append"); b.add_argument("--group",default="priority"); b.add_argument("--iterations",type=int); b.add_argument("--duration",type=parse_duration); b.add_argument("--ws-duration",type=int); b.add_argument("--dry-run",action="store_true")
+    c=command("campaign"); c.add_argument("--dry-run",action="store_true"); c.add_argument("--iterations",type=int); c.add_argument("--ws-duration",type=int); c.add_argument("--group",default="priority"); c.add_argument("--max-windows",type=int,default=1); c.add_argument("--daemon",action="store_true"); c.add_argument("--poll-seconds",type=int,default=30)
+    r=command("report"); r.add_argument("--run-id"); r.add_argument("--campaign")
+    command("validate")
+    x=command("compare"); x.add_argument("--run-id",action="append",required=True)
     return p
 
 
@@ -32,18 +49,33 @@ async def _async_main(args: argparse.Namespace) -> int:
     config=load_config(args.config)
     if args.command=="discover":
         rows=[]
-        for adapter in REGISTRY.values(): rows.append({"exchange_id":adapter.exchange_id,"display_name":adapter.display_name,"endpoints":[e.url for e in await adapter.discover_public_endpoints()],"websocket_supported":bool(adapter.ws_url),"notes":adapter.notes})
+        for adapter in REGISTRY.values(): rows.append({"exchange_id":adapter.exchange_id,"display_name":adapter.display_name,"endpoints":[e.url for e in await adapter.discover_public_endpoints()],"websocket_supported":adapter.websocket_supported,"notes":adapter.notes})
         print(json.dumps(rows,indent=2) if args.json_output else "\n".join(f"{r['exchange_id']:10} REST=yes WS={'yes' if r['websocket_supported'] else 'partial'}" for r in rows)); return 0
-    if args.command in ("benchmark","campaign"):
+    if args.command=="benchmark":
         exchanges=getattr(args,"exchange",None) or config.selected_exchanges(getattr(args,"group","priority"))
-        if getattr(args,"dry_run",False): print(json.dumps({"exchanges":exchanges,"iterations":args.iterations or config.probes.iterations,"websocket_seconds":config.probes.websocket_observation_seconds},indent=2)); return 0
-        run_id,paths,rankings=await benchmark(config,exchanges,args.iterations,getattr(args,"ws_duration",None),lambda s: None if args.json_output else print(s))
+        effective_iterations=args.iterations or (1 if args.duration else config.probes.iterations)
+        effective_ws=args.ws_duration if args.ws_duration is not None else (min(args.duration,config.probes.websocket_observation_seconds) if args.duration else config.probes.websocket_observation_seconds)
+        if getattr(args,"dry_run",False): print(json.dumps({"exchanges":exchanges,"iterations_minimum":effective_iterations,"duration_seconds":args.duration,"websocket_seconds":effective_ws},indent=2)); return 0
+        run_id,paths,rankings=await benchmark(config,exchanges,effective_iterations,effective_ws,lambda s: None if args.json_output else print(s),args.duration)
         result={"run_id":run_id,"reports":paths,"rankings":rankings}; print(json.dumps(result,indent=2) if args.json_output else f"Run {run_id} complete\n"+"\n".join(f"{i}. {r['exchange_id']} {r['overall_score']:.1f} ({r['confidence']})" for i,r in enumerate(rankings,1))); return 0
+    if args.command=="campaign":
+        exchanges=config.selected_exchanges(args.group)
+        if args.dry_run:
+            print(json.dumps({"campaign":config.campaign.model_dump(),"schedule":[{"utc":u,"local":l} for u,l in build_schedule(config)],"exchanges":exchanges},indent=2)); return 0
+        result=await run_campaign(config,exchanges,args.iterations,args.ws_duration,args.max_windows,args.daemon,args.poll_seconds,lambda s: None if args.json_output else print(s))
+        print(json.dumps(result,indent=2)); return 0
     if args.command=="report":
         with Storage(config.storage_path) as store:
-            run_id=args.run_id or store.latest_run_id()
-            if not run_id: raise ValueError("no benchmark run found")
-            samples=store.samples(run_id); ws=store.websockets(run_id); rankings=rank(samples,ws,sorted({s['exchange_id'] for s in samples}),config.scoring.weights); paths=generate_reports(run_id,rankings,samples,config.report_directory)
+            if args.campaign:
+                run_ids=store.campaign_run_ids(args.campaign)
+                if not run_ids: raise ValueError(f"campaign has no completed windows: {args.campaign}")
+                report_id="campaign-"+"".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in args.campaign)
+                samples=store.samples_for_runs(run_ids); ws=store.websockets_for_runs(run_ids); markets=store.orderbooks_for_runs(run_ids); routes=store.routes_for_runs(run_ids); window_count=len(run_ids)
+            else:
+                report_id=args.run_id or store.latest_run_id()
+                if not report_id: raise ValueError("no benchmark run found")
+                samples=store.samples(report_id); ws=store.websockets(report_id); markets=store.orderbooks(report_id); routes=store.routes(report_id); window_count=1
+            rankings=rank(samples,ws,sorted({s['exchange_id'] for s in samples}),config.scoring.weights,markets,window_count); paths=generate_reports(report_id,rankings,samples,config.report_directory,ws,markets,routes)
         print(json.dumps(paths,indent=2)); return 0
     if args.command=="compare":
         if len(args.run_id)!=2: raise ValueError("compare requires exactly two --run-id values")
@@ -66,4 +98,3 @@ def main() -> None:
 
 
 if __name__=="__main__": main()
-

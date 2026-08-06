@@ -1,6 +1,6 @@
 # MVP acceptance report
 
-Status at repository bootstrap: **NOT READY** pending executed validation evidence and full seven-day campaign.
+Implementation status: production-MVP feature set verified; location-specific acceptance remains **NOT READY** pending the full seven-day campaign.
 
 | Criterion | State | Evidence |
 |---|---|---|
@@ -13,9 +13,10 @@ Status at repository bootstrap: **NOT READY** pending executed validation eviden
 | Transparent scoring and missing-data penalty | Implemented | Scoring tests |
 | No key / no live order | Verified by design | No credential or order interface exists |
 | Windows 11 native support | Documented | Windows setup guide |
-| Ten live adapters verified | Pending | Requires conservative live campaign |
-| Full test suite passes | Verified | 11 tests passed on 2026-08-06 |
-| Conservative live smoke run | Verified | Run `e356a31c5520`: REST 10/10 venues; WebSocket data 7/10 |
+| Ten live adapters verified | Verified | Run `30c515ac2072`: REST 10/10; WS 10/10; order books 30/30 |
+| Full test suite passes | Verified | 44 passed, 2 opt-in live tests skipped; opt-in live suite 2/2 passed |
+| Conservative live smoke run | Verified | Run `30c515ac2072`, zero recorded probe errors |
+| Resumable sample campaign | Verified | `haifa-smoke-acceptance`: one window completed as run `6672d3066fe3`; aggregate report generated |
 | Seven-day Haifa campaign | Pending | Requires elapsed observation windows |
 
-The readiness gate remains `CEX_LATENCY_PLATFORM_MVP_NOT_READY` until mandatory live evidence is complete.
+The readiness gate remains `CEX_LATENCY_PLATFORM_MVP_NOT_READY` until all 42 scheduled windows complete and the aggregate recommendation is generated. This is an evidence-duration gate, not an implementation failure.

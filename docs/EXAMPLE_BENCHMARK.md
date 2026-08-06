@@ -1,14 +1,17 @@
 # Example benchmark output
 
-Initial smoke run `7aeeef0bd649`, followed by post-fix verification run `e356a31c5520`, was executed from the local machine in Haifa on 2026-08-06 with one reused and one fresh REST request per venue plus a three-second WebSocket observation.
+Current end-to-end smoke run `30c515ac2072` was executed from the local machine in Haifa on 2026-08-06 with first/warm DNS, TCP, TLS, one reused and one fresh REST request per venue, three order-book symbols, and WebSocket observation plus reconnect.
 
 - All 10 configured venues returned successful public REST responses (20/20 requests).
-- Seven WebSocket endpoints delivered market-data messages during the post-fix window (Binance, Bybit, OKX, Bitget, Gate.io, MEXC, and Kraken Futures).
-- KuCoin WebSocket remained explicitly unsupported because dynamic public-token discovery is pending.
-- BingX and Phemex WebSocket handshakes did not yield usable market data in this run.
+- All 10 WebSocket endpoints delivered market-data messages and a reconnect measurement.
+- All 30 order-book snapshots (10 venues × BTC/ETH/SOL) parsed successfully.
+- Registry persistence contained 10 exchanges, 30 public endpoints, and 30 canonical/native symbol mappings.
+- No probe error was recorded.
 - Every ranking was `INSUFFICIENT`, as required: two REST samples and a three-second stream cannot support a venue recommendation.
 
-The initial run exposed and led to a fix for observation-window timeout classification; the second run verified the correction. Numeric rankings are intentionally not reproduced as decision evidence. The complete seven-day campaign must use new run IDs.
+Numeric rankings are intentionally not reproduced as decision evidence because every venue remained `INSUFFICIENT` after one short window. The complete seven-day campaign must use new run IDs.
+
+The scheduler itself was validated by campaign `haifa-smoke-acceptance`: its due window was atomically claimed, completed as run `6672d3066fe3`, persisted with `COMPLETED` status and one attempt, and regenerated as an aggregate campaign dashboard. Evidence counts were again REST 20/20, WebSocket 10/10, order books 30/30, errors 0.
 
 Example command:
 

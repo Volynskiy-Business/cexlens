@@ -42,11 +42,10 @@ def summarize(values: Iterable[float | None], total_count: int | None = None) ->
 def confidence(sample_count: int, success_rate: float, windows: int = 1, timestamp_quality: str = "UNKNOWN") -> str:
     if sample_count < 3 or success_rate < 0.5:
         return "INSUFFICIENT"
+    if sample_count >= 20 and success_rate >= .98 and windows >= 6 and timestamp_quality == "VERIFIED":
+        return "HIGH"
     points = min(sample_count / 20, 1.0) * 0.45 + success_rate * 0.35 + min(windows / 6, 1.0) * 0.15
     points += 0.05 if timestamp_quality == "VERIFIED" else 0.0
-    if points >= 0.85:
-        return "HIGH"
     if points >= 0.60:
         return "MEDIUM"
     return "LOW"
-

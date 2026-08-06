@@ -5,13 +5,13 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .models import ProbeSample, WebSocketSummary, utc_now
+from .models import ClockStatus, OrderBookQuality, ProbeSample, WebSocketSummary, utc_now
 
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS benchmark_runs (run_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT, status TEXT NOT NULL, config_json TEXT NOT NULL, host_id TEXT, version TEXT, git_sha TEXT);
-CREATE TABLE IF NOT EXISTS hosts (host_id TEXT PRIMARY KEY, hostname_hash TEXT, os_version TEXT, python_version TEXT, timezone TEXT, public_ip_hash TEXT);
+CREATE TABLE IF NOT EXISTS hosts (host_id TEXT PRIMARY KEY, hostname_hash TEXT, os_version TEXT, python_version TEXT, timezone TEXT, public_ip_hash TEXT, network_interface TEXT, isp_name TEXT);
 CREATE TABLE IF NOT EXISTS exchanges (exchange_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, adapter_version TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS endpoints (id INTEGER PRIMARY KEY, exchange_id TEXT NOT NULL, kind TEXT NOT NULL, url TEXT NOT NULL, observed_at TEXT NOT NULL, UNIQUE(exchange_id, kind, url));
 CREATE TABLE IF NOT EXISTS markets (id INTEGER PRIMARY KEY, exchange_id TEXT NOT NULL, canonical_symbol TEXT NOT NULL, native_symbol TEXT NOT NULL, market_type TEXT NOT NULL, UNIQUE(exchange_id, canonical_symbol));
@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS exchange_capabilities (exchange_id TEXT PRIMARY KEY, 
 CREATE TABLE IF NOT EXISTS score_snapshots (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, exchange_id TEXT NOT NULL, overall_score REAL, confidence TEXT NOT NULL, components_json TEXT NOT NULL, raw_metrics_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS report_artifacts (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS errors (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, endpoint TEXT, probe_type TEXT, timestamp TEXT, exception_type TEXT, retry_number INTEGER, classification TEXT, recoverable INTEGER, detail TEXT);
+CREATE TABLE IF NOT EXISTS campaign_windows (campaign_name TEXT NOT NULL, window_utc TEXT NOT NULL, local_label TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', run_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL, PRIMARY KEY(campaign_name, window_utc));
 """
 
 
@@ -33,6 +34,14 @@ class Storage:
         self.connection = sqlite3.connect(self.path)
         self.connection.row_factory = sqlite3.Row
         self.connection.executescript(SCHEMA)
+        self._ensure_column("hosts","network_interface","TEXT")
+        self._ensure_column("hosts","isp_name","TEXT")
+
+    def _ensure_column(self, table: str, column: str, declaration: str) -> None:
+        columns={row[1] for row in self.connection.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            self.connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+            self.connection.commit()
 
     def close(self) -> None: self.connection.close()
     def __enter__(self) -> "Storage": return self
@@ -52,6 +61,41 @@ class Storage:
     def add_websocket(self, s: WebSocketSummary) -> None:
         self.connection.execute("INSERT INTO websocket_sessions (run_id,exchange_id,endpoint,symbol,success,summary_json) VALUES (?,?,?,?,?,?)", (s.run_id,s.exchange_id,s.endpoint,s.symbol,int(s.success),json.dumps(s.to_dict()))); self.connection.commit()
         if not s.success: self._add_error(s.run_id,s.exchange_id,s.endpoint,"websocket",s.error_class,s.error_detail)
+
+    def add_orderbook(self, s: OrderBookQuality) -> None:
+        self.connection.execute(
+            "INSERT INTO orderbook_quality_summary (run_id,exchange_id,symbol,summary_json) VALUES (?,?,?,?)",
+            (s.run_id, s.exchange_id, s.symbol, json.dumps(s.to_dict())),
+        )
+        self.connection.commit()
+        if not s.success:
+            self._add_error(s.run_id, s.exchange_id, "", "orderbook", s.error_class, s.error_detail)
+
+    def orderbooks(self, run_id: str) -> list[dict[str, Any]]:
+        return [json.loads(r[0]) for r in self.connection.execute("SELECT summary_json FROM orderbook_quality_summary WHERE run_id=?", (run_id,))]
+
+    def add_route(self, run_id: str, exchange_id: str, endpoint: str, output: str) -> None:
+        self.connection.execute("INSERT INTO route_diagnostics (run_id,exchange_id,endpoint,captured_at,output) VALUES (?,?,?,?,?)", (run_id,exchange_id,endpoint,utc_now(),output))
+        self.connection.commit()
+
+    def routes(self, run_id: str) -> list[dict[str, Any]]:
+        return [dict(r) for r in self.connection.execute("SELECT exchange_id,endpoint,captured_at,output FROM route_diagnostics WHERE run_id=? ORDER BY exchange_id", (run_id,))]
+
+    def upsert_host(self, host_id: str, hostname_hash: str, os_version: str, python_version: str, timezone: str, clock: ClockStatus, network: dict[str, str | None] | None = None) -> None:
+        network=network or {}
+        self.connection.execute(
+            "INSERT INTO hosts (host_id,hostname_hash,os_version,python_version,timezone,public_ip_hash,network_interface,isp_name) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(host_id) DO UPDATE SET os_version=excluded.os_version,python_version=excluded.python_version,timezone=excluded.timezone,public_ip_hash=excluded.public_ip_hash,network_interface=excluded.network_interface,isp_name=excluded.isp_name",
+            (host_id,hostname_hash,os_version,python_version,timezone,network.get("public_ip_hash"),network.get("network_interface"),network.get("isp_name")),
+        )
+        self.connection.execute("INSERT OR REPLACE INTO exchange_capabilities (exchange_id,capabilities_json) VALUES (?,?)", (f"__clock__:{host_id}", json.dumps(clock.to_dict())))
+        self.connection.commit()
+
+    def register_adapter(self, exchange_id: str, display_name: str, adapter_version: str, endpoints: list[Any], markets: list[Any], capabilities: dict[str, Any]) -> None:
+        self.connection.execute("INSERT INTO exchanges (exchange_id,display_name,adapter_version) VALUES (?,?,?) ON CONFLICT(exchange_id) DO UPDATE SET display_name=excluded.display_name,adapter_version=excluded.adapter_version", (exchange_id,display_name,adapter_version))
+        self.connection.executemany("INSERT OR IGNORE INTO endpoints (exchange_id,kind,url,observed_at) VALUES (?,?,?,?)", [(e.exchange_id,e.kind,e.url,utc_now()) for e in endpoints])
+        self.connection.executemany("INSERT OR IGNORE INTO markets (exchange_id,canonical_symbol,native_symbol,market_type) VALUES (?,?,?,?)", [(m.exchange_id,m.canonical_symbol,m.native_symbol,m.market_type) for m in markets])
+        self.connection.execute("INSERT INTO exchange_capabilities (exchange_id,capabilities_json) VALUES (?,?) ON CONFLICT(exchange_id) DO UPDATE SET capabilities_json=excluded.capabilities_json",(exchange_id,json.dumps(capabilities)))
+        self.connection.commit()
 
     def _add_error(self, run_id: str, exchange: str, endpoint: str, probe: str, classification: str | None, detail: str | None) -> None:
         self.connection.execute("INSERT INTO errors (run_id,exchange_id,endpoint,probe_type,timestamp,exception_type,retry_number,classification,recoverable,detail) VALUES (?,?,?,?,?,?,?,?,?,?)",(run_id,exchange,endpoint,probe,utc_now(),classification,0,classification,1,detail)); self.connection.commit()
@@ -73,3 +117,54 @@ class Storage:
     def add_report(self, run_id: str, kind: str, path: str) -> None:
         self.connection.execute("INSERT INTO report_artifacts (run_id,kind,path,created_at) VALUES (?,?,?,?)",(run_id,kind,path,utc_now())); self.connection.commit()
 
+    def ensure_campaign_windows(self, campaign_name: str, windows: list[tuple[str, str]]) -> None:
+        self.connection.executemany(
+            "INSERT OR IGNORE INTO campaign_windows (campaign_name,window_utc,local_label,status,updated_at) VALUES (?,?,?,'PENDING',?)",
+            [(campaign_name, utc, local, utc_now()) for utc, local in windows],
+        )
+        self.connection.commit()
+
+    def campaign_window_count(self, campaign_name: str) -> int:
+        return int(self.connection.execute("SELECT count(*) FROM campaign_windows WHERE campaign_name=?",(campaign_name,)).fetchone()[0])
+
+    def resume_campaign(self, campaign_name: str) -> int:
+        cursor = self.connection.execute("UPDATE campaign_windows SET status='PENDING',last_error='Recovered after interrupted process',updated_at=? WHERE campaign_name=? AND status='RUNNING'", (utc_now(), campaign_name))
+        self.connection.commit()
+        return cursor.rowcount
+
+    def due_campaign_windows(self, campaign_name: str, now_utc: str, limit: int = 1) -> list[dict[str, Any]]:
+        return [dict(r) for r in self.connection.execute("SELECT * FROM campaign_windows WHERE campaign_name=? AND status='PENDING' AND window_utc<=? ORDER BY window_utc LIMIT ?", (campaign_name, now_utc, limit))]
+
+    def claim_campaign_window(self, campaign_name: str, window_utc: str) -> bool:
+        cursor = self.connection.execute("UPDATE campaign_windows SET status='RUNNING',attempts=attempts+1,updated_at=? WHERE campaign_name=? AND window_utc=? AND status='PENDING'", (utc_now(),campaign_name,window_utc))
+        self.connection.commit()
+        return cursor.rowcount == 1
+
+    def finish_campaign_window(self, campaign_name: str, window_utc: str, run_id: str | None, error: str | None = None) -> None:
+        self.connection.execute("UPDATE campaign_windows SET status=?,run_id=?,last_error=?,updated_at=? WHERE campaign_name=? AND window_utc=?", ("FAILED" if error else "COMPLETED",run_id,error,utc_now(),campaign_name,window_utc))
+        self.connection.commit()
+
+    def campaign_summary(self, campaign_name: str) -> dict[str, int]:
+        result = {"PENDING":0,"RUNNING":0,"COMPLETED":0,"FAILED":0}
+        for status,count in self.connection.execute("SELECT status,count(*) FROM campaign_windows WHERE campaign_name=? GROUP BY status", (campaign_name,)):
+            result[status]=count
+        return result
+
+    def next_campaign_window(self, campaign_name: str) -> str | None:
+        row=self.connection.execute("SELECT min(window_utc) FROM campaign_windows WHERE campaign_name=? AND status='PENDING'",(campaign_name,)).fetchone()
+        return row[0] if row and row[0] else None
+
+    def campaign_run_ids(self, campaign_name: str) -> list[str]:
+        return [r[0] for r in self.connection.execute("SELECT run_id FROM campaign_windows WHERE campaign_name=? AND status='COMPLETED' AND run_id IS NOT NULL ORDER BY window_utc",(campaign_name,))]
+
+    def samples_for_runs(self, run_ids: list[str]) -> list[dict[str, Any]]:
+        return [sample for run_id in run_ids for sample in self.samples(run_id)]
+
+    def websockets_for_runs(self, run_ids: list[str]) -> list[dict[str, Any]]:
+        return [row for run_id in run_ids for row in self.websockets(run_id)]
+
+    def orderbooks_for_runs(self, run_ids: list[str]) -> list[dict[str, Any]]:
+        return [row for run_id in run_ids for row in self.orderbooks(run_id)]
+
+    def routes_for_runs(self, run_ids: list[str]) -> list[dict[str, Any]]:
+        return [row for run_id in run_ids for row in self.routes(run_id)]

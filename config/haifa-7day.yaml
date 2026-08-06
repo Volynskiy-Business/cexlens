@@ -14,6 +14,9 @@ probes:
   bounded_concurrency: 5
   per_exchange_concurrency: 1
   jitter_ms: 250
+  market_quality: true
+  route_diagnostics: true
+  route_max_hops: 20
 scoring:
   profile: manual-futures-scalping
   weights:
@@ -27,4 +30,3 @@ scoring:
     accessibility: 0.05
 storage_path: data/cexlatency.db
 report_directory: reports/generated
-
