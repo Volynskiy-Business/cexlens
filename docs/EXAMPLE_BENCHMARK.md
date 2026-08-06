@@ -8,6 +8,7 @@ Current end-to-end smoke run `03bad502ba00` was executed from the local machine 
 - Registry persistence contained 10 exchanges, public REST/WebSocket/market/trade endpoints, and 30 canonical/native symbol mappings.
 - No probe error was recorded.
 - Every ranking was `INSUFFICIENT`, as required: two REST samples and three-second streams cannot support a venue recommendation.
+- The report includes `metric_statistics.csv` with count, success/failure, median, p75/p90/p95/p99, dispersion, jitter, and outlier statistics for the available DNS/TCP/TLS/REST/WebSocket/market layers.
 
 Numeric rankings are intentionally not reproduced as decision evidence because every venue remained `INSUFFICIENT` after one short window. The complete seven-day campaign must use new run IDs.
 

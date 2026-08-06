@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS probe_samples (id INTEGER PRIMARY KEY, run_id TEXT NO
 CREATE TABLE IF NOT EXISTS websocket_sessions (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, exchange_id TEXT NOT NULL, endpoint TEXT NOT NULL, symbol TEXT NOT NULL, success INTEGER NOT NULL, summary_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS websocket_events_summary (id INTEGER PRIMARY KEY, session_id INTEGER, metric_json TEXT);
 CREATE TABLE IF NOT EXISTS orderbook_quality_summary (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, symbol TEXT, summary_json TEXT);
-CREATE TABLE IF NOT EXISTS route_diagnostics (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, endpoint TEXT, captured_at TEXT, output TEXT);
+CREATE TABLE IF NOT EXISTS route_diagnostics (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, endpoint TEXT, captured_at TEXT, output TEXT, summary_json TEXT);
 CREATE TABLE IF NOT EXISTS exchange_capabilities (exchange_id TEXT PRIMARY KEY, capabilities_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS score_snapshots (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, exchange_id TEXT NOT NULL, overall_score REAL, confidence TEXT NOT NULL, components_json TEXT NOT NULL, raw_metrics_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS report_artifacts (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL, created_at TEXT NOT NULL);
@@ -39,6 +39,7 @@ class Storage:
         self._ensure_column("hosts","isp_name","TEXT")
         self._ensure_column("campaign_windows","claimed_by","TEXT")
         self._ensure_column("campaign_windows","lease_expires_at","TEXT")
+        self._ensure_column("route_diagnostics","summary_json","TEXT")
 
     def _ensure_column(self, table: str, column: str, declaration: str) -> None:
         columns={row[1] for row in self.connection.execute(f"PRAGMA table_info({table})")}
@@ -77,12 +78,15 @@ class Storage:
     def orderbooks(self, run_id: str) -> list[dict[str, Any]]:
         return [json.loads(r[0]) for r in self.connection.execute("SELECT summary_json FROM orderbook_quality_summary WHERE run_id=?", (run_id,))]
 
-    def add_route(self, run_id: str, exchange_id: str, endpoint: str, output: str) -> None:
-        self.connection.execute("INSERT INTO route_diagnostics (run_id,exchange_id,endpoint,captured_at,output) VALUES (?,?,?,?,?)", (run_id,exchange_id,endpoint,utc_now(),output))
+    def add_route(self, run_id: str, exchange_id: str, endpoint: str, output: str, summary: dict[str,Any] | None = None) -> None:
+        self.connection.execute("INSERT INTO route_diagnostics (run_id,exchange_id,endpoint,captured_at,output,summary_json) VALUES (?,?,?,?,?,?)", (run_id,exchange_id,endpoint,utc_now(),output,json.dumps(summary or {})))
         self.connection.commit()
 
     def routes(self, run_id: str) -> list[dict[str, Any]]:
-        return [dict(r) for r in self.connection.execute("SELECT exchange_id,endpoint,captured_at,output FROM route_diagnostics WHERE run_id=? ORDER BY exchange_id", (run_id,))]
+        rows=[]
+        for row in self.connection.execute("SELECT exchange_id,endpoint,captured_at,output,summary_json FROM route_diagnostics WHERE run_id=? ORDER BY exchange_id", (run_id,)):
+            item=dict(row); item["summary"]=json.loads(item.pop("summary_json") or "{}"); rows.append(item)
+        return rows
 
     def upsert_host(self, host_id: str, hostname_hash: str, os_version: str, python_version: str, timezone: str, clock: ClockStatus, network: dict[str, str | None] | None = None) -> None:
         network=network or {}
@@ -190,3 +194,17 @@ class Storage:
 
     def routes_for_runs(self, run_ids: list[str]) -> list[dict[str, Any]]:
         return [row for run_id in run_ids for row in self.routes(run_id)]
+
+    def retention_candidates(self, cutoff_utc: str) -> list[str]:
+        return [row[0] for row in self.connection.execute("SELECT run_id FROM benchmark_runs b WHERE b.ended_at IS NOT NULL AND b.ended_at<? AND NOT EXISTS (SELECT 1 FROM campaign_windows c WHERE c.run_id=b.run_id) ORDER BY b.ended_at",(cutoff_utc,))]
+
+    def prune_runs_before(self, cutoff_utc: str) -> list[str]:
+        run_ids=self.retention_candidates(cutoff_utc)
+        if not run_ids: return []
+        marks=",".join("?" for _ in run_ids)
+        with self.connection:
+            self.connection.execute(f"DELETE FROM websocket_events_summary WHERE session_id IN (SELECT id FROM websocket_sessions WHERE run_id IN ({marks}))",run_ids)
+            for table in ("probe_samples","websocket_sessions","orderbook_quality_summary","route_diagnostics","score_snapshots","report_artifacts","errors"):
+                self.connection.execute(f"DELETE FROM {table} WHERE run_id IN ({marks})",run_ids)
+            self.connection.execute(f"DELETE FROM benchmark_runs WHERE run_id IN ({marks})",run_ids)
+        return run_ids

@@ -4,7 +4,7 @@ Measurements originate on the local host. DNS time covers resolver completion, T
 
 Fresh and reused HTTP connections are measured separately. The former includes setup overhead; the latter approximates steady-state public API use. All durations use the monotonic clock. UTC wall time is used only for event-time comparison and audit timestamps.
 
-Observed timestamp lag equals local UTC receive time minus the exchange event timestamp. Clock skew can dominate it, so the metric remains `UNKNOWN` quality until an independent OS/NTP check exists. It is never described as true one-way latency.
+Observed timestamp lag equals local UTC receive time minus the exchange event timestamp. Clock skew can dominate it. A synchronized clock without a measured offset is labeled `SYNCHRONIZED_OFFSET_UNKNOWN`, not `VERIFIED`; the metric is never described as true one-way latency without a bounded offset measurement.
 
 Campaigns use both a global concurrency bound and a configurable per-exchange semaphore, randomized inter-probe jitter, conservative public endpoints, and short payloads. A seven-day conclusion requires all configured time windows; a smoke run only validates mechanics.
 
@@ -14,4 +14,4 @@ Order-book snapshots are normalized into best bid/ask, spread in basis points, a
 
 WebSocket sessions run separately for every configured symbol and measure handshake, subscription acknowledgement where explicit, first valid market-data message, heartbeat RTT, mean/median/p95 inter-arrival distribution, stale periods, malformed and duplicate messages, and controlled reconnect-to-first-data recovery. Sequence gaps are evaluated only when the selected channel declares a contiguous counter.
 
-Route diagnostics are diagnostic evidence and cannot identify a matching-engine location. ICMP ping is intentionally absent from the ranking.
+Route diagnostics persist raw output plus hop count, responding-hop count, maximum visible latency, largest hop-to-hop increase, a conservative suspected-bottleneck flag, and a route fingerprint for change detection. These remain diagnostic evidence and cannot identify a matching-engine location. ICMP ping is intentionally absent from the ranking.

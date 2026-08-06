@@ -58,12 +58,17 @@ class ScoringConfig(BaseModel):
         return self
 
 
+class RetentionConfig(BaseModel):
+    benchmark_days: int | None = Field(default=None,ge=1,le=3650)
+
+
 class AppConfig(BaseModel):
     campaign: CampaignConfig = CampaignConfig()
     exchanges: dict[str, list[str]] = {"priority": ["binance", "bybit", "okx", "bitget", "gate", "mexc", "kucoin", "kraken", "bingx", "phemex"]}
     symbols: dict[str, list[str]] = {"major": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]}
     probes: ProbeConfig = ProbeConfig()
     scoring: ScoringConfig = ScoringConfig()
+    retention: RetentionConfig = RetentionConfig()
     storage_path: str = "data/cexlatency.db"
     report_directory: str = "reports/generated"
 

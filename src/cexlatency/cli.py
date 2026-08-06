@@ -5,7 +5,7 @@ import asyncio
 import json
 import sqlite3
 import sys
-from datetime import date
+from datetime import date,datetime,timedelta,timezone
 from pathlib import Path
 
 from .adapters import REGISTRY
@@ -42,6 +42,7 @@ def parser() -> argparse.ArgumentParser:
     c=command("campaign"); c.add_argument("--dry-run",action="store_true"); c.add_argument("--iterations",type=int); c.add_argument("--ws-duration",type=int); c.add_argument("--group",default="priority"); c.add_argument("--max-windows",type=int,default=1); c.add_argument("--daemon",action="store_true"); c.add_argument("--poll-seconds",type=int,default=30); c.add_argument("--start-date",type=date.fromisoformat)
     r=command("report"); r.add_argument("--run-id"); r.add_argument("--campaign")
     s=command("status"); s.add_argument("--campaign")
+    cleanup=command("retention"); cleanup.add_argument("--apply",action="store_true")
     command("validate")
     x=command("compare"); x.add_argument("--run-id",action="append",required=True)
     return p
@@ -77,6 +78,17 @@ async def _async_main(args: argparse.Namespace) -> int:
             print(f"Next window UTC: {result['next_window_utc'] or 'none'}")
             for row in windows: print(f"{row['local_label']}  {row['status']:9}  attempts={row['attempts']}  run={row['run_id'] or '-'}")
         return 0
+    if args.command=="retention":
+        days=config.retention.benchmark_days
+        if days is None:
+            result={"enabled":False,"message":"retention.benchmark_days is null; no data changed"}
+        else:
+            cutoff=(datetime.now(timezone.utc)-timedelta(days=days)).isoformat()
+            with Storage(config.storage_path) as store:
+                candidates=store.retention_candidates(cutoff)
+                removed=store.prune_runs_before(cutoff) if args.apply else []
+            result={"enabled":True,"cutoff_utc":cutoff,"candidate_run_ids":candidates,"applied":bool(args.apply),"removed_run_ids":removed,"preserved_campaign_runs":True,"report_files_preserved":True}
+        print(json.dumps(result,indent=2) if args.json_output else json.dumps(result,indent=2)); return 0
     if args.command=="report":
         with Storage(config.storage_path) as store:
             if args.campaign:

@@ -11,6 +11,7 @@ def test_percentiles_interpolate():
 def test_summary_contains_robust_and_tail_metrics():
     result = summarize([10, 11, 12, 13, None], total_count=5)
     assert result["median"] == 11.5
+    assert result["p50"] == 11.5
     assert result["p95"] == pytest.approx(12.85)
     assert result["failure_count"] == 1
     assert result["success_rate"] == 0.8

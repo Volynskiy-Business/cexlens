@@ -31,7 +31,7 @@ def summarize(values: Iterable[float | None], total_count: int | None = None) ->
     return {
         "count": total, "success_count": len(clean), "failure_count": failures,
         "success_rate": len(clean) / total if total else 0.0,
-        "min": min(clean), "max": max(clean), "mean": statistics.fmean(clean), "median": med,
+        "min": min(clean), "max": max(clean), "mean": statistics.fmean(clean), "median": med, "p50": med,
         "p75": p75, "p90": p90, "p95": p95, "p99": p99, "stddev": std, "mad": mad,
         "coefficient_of_variation": std / statistics.fmean(clean) if statistics.fmean(clean) else 0.0,
         "jitter": statistics.fmean(abs(b - a) for a, b in zip(clean, clean[1:])) if len(clean) > 1 else 0.0,

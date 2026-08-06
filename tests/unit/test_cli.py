@@ -19,3 +19,4 @@ def test_config_is_accepted_before_or_after_command():
     assert parser().parse_args(["--config","a.yaml","validate"]).config == "a.yaml"
     assert parser().parse_args(["validate","--config","b.yaml"]).config == "b.yaml"
     assert parser().parse_args(["status","--campaign","c"]).campaign == "c"
+    assert parser().parse_args(["retention","--apply"]).apply is True

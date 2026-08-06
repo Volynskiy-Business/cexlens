@@ -45,7 +45,8 @@ async def detect_clock_status() -> ClockStatus:
         code, output = await _command("timedatectl", "show", "--property=NTPSynchronized", "--property=NTP", "--value", timeout=8)
         values = [line.strip().lower() for line in output.splitlines() if line.strip()]
         synchronized = code == 0 and "yes" in values
-        return ClockStatus(synchronized, "VERIFIED" if synchronized else "UNVERIFIED", "systemd-timesyncd" if synchronized else None, None, utc_now(), output[-2000:])
+        quality="SYNCHRONIZED_OFFSET_UNKNOWN" if synchronized else "UNVERIFIED"
+        return ClockStatus(synchronized, quality, "systemd-timesyncd" if synchronized else None, None, utc_now(), output[-2000:])
     return ClockStatus(None, "UNKNOWN", None, None, utc_now(), f"No supported clock diagnostic on {system}")
 
 
@@ -60,6 +61,36 @@ async def trace_route(url: str, max_hops: int = 20, timeout: float = 45) -> str:
     else:
         return "UNAVAILABLE: no tracert, traceroute, or tracepath executable found"
     return f"exit_code={code}\n{output}"
+
+
+def summarize_route(output: str) -> dict[str,int | float | str | None]:
+    """Extract portable diagnostic features without inferring matching-engine location."""
+    hops=[]; identities=[]
+    for line in output.splitlines():
+        hop_match=re.match(r"^\s*(\d+)\s+",line)
+        if not hop_match: continue
+        hop=int(hop_match.group(1))
+        latencies=[float(value) for value in re.findall(r"<?\s*(\d+(?:\.\d+)?)\s*ms",line,re.IGNORECASE)]
+        ip_match=re.search(r"(?:\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F]{2,}(?::[0-9a-fA-F:]+)+",line)
+        identity=ip_match.group(0) if ip_match else "*"
+        hops.append({"hop":hop,"latency_ms":sum(latencies)/len(latencies) if latencies else None,"identity":identity})
+        identities.append(identity)
+    responding=[row for row in hops if row["latency_ms"] is not None]
+    increases=[]
+    for previous,current in zip(responding,responding[1:]):
+        increase=float(current["latency_ms"])-float(previous["latency_ms"])
+        increases.append((increase,int(current["hop"])))
+    largest=max(increases,default=(0.0,None))
+    fingerprint=hashlib.sha256("|".join(identities).encode()).hexdigest()[:16] if identities else None
+    return {
+        "hop_count":max((int(row["hop"]) for row in hops),default=0),
+        "responding_hops":len(responding),
+        "max_hop_latency_ms":max((float(row["latency_ms"]) for row in responding),default=None),
+        "largest_hop_increase_ms":max(0.0,largest[0]),
+        "suspected_bottleneck_hop":largest[1] if largest[0]>=20 else None,
+        "route_fingerprint":fingerprint,
+        "inference_warning":"Visible hops are diagnostic only and do not identify a matching engine.",
+    }
 
 
 async def detect_network_identity(host_id: str, timeout: float = 8) -> dict[str, str | None]:

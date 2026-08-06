@@ -10,4 +10,6 @@ Campaign windows have an explicit grace period. A pending window older than that
 
 Every claimed window has a unique worker token and a bounded lease. Concurrent launchers cannot reclaim an active window; an interrupted window is recoverable only after its lease expires and remains subject to the original grace rule.
 
+Database retention is disabled by default (`retention.benchmark_days: null`). `cexlatency retention` is a non-destructive preview; deletion occurs only with `--apply`, never removes campaign-referenced runs, and preserves generated report files. Retention is deliberately excluded from the immutable measurement definition because it does not alter how evidence is collected.
+
 Endpoint reachability, HTTP status, sample size, tail behavior, and evidence coverage should be inspected before acting on a ranking. Recent-trade frequency is derived from the timestamp span of a bounded latest-trades response and can vary sharply with sampling time. Exchange-provided trades, volume, or timestamps are not independently audited.

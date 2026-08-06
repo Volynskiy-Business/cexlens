@@ -87,7 +87,9 @@ async def _run_campaign_unlocked(
             resolved_start_date=date.fromisoformat(existing_definition["resolved_start_date_local"])
         else:
             resolved_start_date=start_local_date or datetime.now(ZoneInfo(config.campaign.timezone)).date()
-        definition=config.model_dump(mode="json"); definition["resolved_start_date_local"]=resolved_start_date.isoformat()
+        # Retention is an out-of-band storage policy and cannot change an
+        # immutable measurement campaign definition.
+        definition=config.model_dump(mode="json",exclude={"retention"}); definition["resolved_start_date_local"]=resolved_start_date.isoformat()
         definition_hash=hashlib.sha256(json.dumps(definition,sort_keys=True,separators=(",",":")).encode()).hexdigest()
         store.ensure_campaign_definition(name,definition_hash,definition)
         if store.campaign_window_count(name)==0:

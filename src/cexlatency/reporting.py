@@ -11,6 +11,8 @@ from typing import Any
 import plotly.graph_objects as go
 import plotly.io as pio
 
+from .metrics import summarize
+
 
 def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     if not rows:
@@ -26,6 +28,34 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 def _figure_html(figure: go.Figure, include_js: bool = False) -> str:
     figure.update_layout(template="plotly_white", margin=dict(l=55,r=30,t=55,b=55), height=430, legend=dict(orientation="h",y=-.18))
     return pio.to_html(figure, full_html=False, include_plotlyjs=True if include_js else False, config={"displaylogo":False,"responsive":True})
+
+
+def _metric_statistics(samples: list[dict[str,Any]], websocket_rows: list[dict[str,Any]], market_rows: list[dict[str,Any]]) -> list[dict[str,Any]]:
+    rows=[]
+    probe_groups: dict[tuple[str,str],list[dict[str,Any]]]=defaultdict(list)
+    for sample in samples: probe_groups[(sample["exchange_id"],sample["probe_type"])].append(sample)
+    for (exchange,probe_type),group in sorted(probe_groups.items()):
+        fields=[("duration_ms","total_duration_ms")]
+        if probe_type.startswith("dns_"): fields.append(("dns_ms","dns_duration_ms"))
+        if probe_type=="tcp": fields.append(("tcp_ms","tcp_connect_ms"))
+        if probe_type.startswith("tls_"): fields.append(("tls_ms","tls_handshake_ms"))
+        if probe_type.startswith("rest_"): fields.append(("ttfb_ms","time_to_first_byte_ms"))
+        for field,metric in fields:
+            stats=summarize([row.get(field) if row.get("success") else None for row in group],len(group))
+            rows.append({"source":"probe","exchange_id":exchange,"probe_type":probe_type,"metric":metric,**stats})
+    ws_groups: dict[str,list[dict[str,Any]]]=defaultdict(list)
+    for row in websocket_rows: ws_groups[row["exchange_id"]].append(row)
+    for exchange,group in sorted(ws_groups.items()):
+        for field in ("handshake_ms","ack_ms","first_message_ms","heartbeat_rtt_ms","mean_interval_ms","median_interval_ms","p95_interval_ms","median_observed_lag_ms","reconnect_ms"):
+            stats=summarize([row.get(field) if row.get("success") else None for row in group],len(group))
+            rows.append({"source":"websocket","exchange_id":exchange,"probe_type":"websocket","metric":field,**stats})
+    market_groups: dict[str,list[dict[str,Any]]]=defaultdict(list)
+    for row in market_rows: market_groups[row["exchange_id"]].append(row)
+    for exchange,group in sorted(market_groups.items()):
+        for field in ("snapshot_latency_ms","trade_frequency_hz"):
+            stats=summarize([row.get(field) if row.get("success") else None for row in group],len(group))
+            rows.append({"source":"market_quality","exchange_id":exchange,"probe_type":"market_snapshot","metric":field,**stats})
+    return rows
 
 
 def _recommendations(rankings: list[dict[str, Any]]) -> dict[str, Any]:
@@ -66,26 +96,36 @@ def generate_reports(run_id: str, rankings: list[dict[str, Any]], samples: list[
     websocket_rows=websocket_rows or []; market_rows=market_rows or []; routes=routes or []
     root=Path(output_dir)/run_id; root.mkdir(parents=True,exist_ok=True)
     recommendations=_recommendations(rankings)
-    summary={"run_id":run_id,"recommendation":recommendations["best_overall"],"recommendations":recommendations,"rankings_by_dimension":_dimension_rankings(rankings),"rankings":rankings,"websocket_sessions":websocket_rows,"market_quality":market_rows,"route_diagnostics_count":len(routes),"methodology":{"latency":"REST p95 and tails are ranked separately; WebSocket timestamp lag is labeled observed lag.","safety":"Public endpoints only; no API keys and no orders.","clock_quality":"Captured per host; observed lag is not exact one-way latency unless VERIFIED.","market_values":"Exchange-provided and not independently audited."}}
+    metric_statistics=_metric_statistics(samples,websocket_rows,market_rows)
+    route_fingerprints: dict[str,set[str]]=defaultdict(set)
+    for route in routes:
+        fingerprint=route.get("summary",{}).get("route_fingerprint")
+        if fingerprint: route_fingerprints[route["exchange_id"]].add(fingerprint)
+    route_changes={exchange:max(0,len(fingerprints)-1) for exchange,fingerprints in route_fingerprints.items()}
+    summary={"run_id":run_id,"recommendation":recommendations["best_overall"],"recommendations":recommendations,"rankings_by_dimension":_dimension_rankings(rankings),"rankings":rankings,"probe_and_session_statistics":metric_statistics,"websocket_sessions":websocket_rows,"market_quality":market_rows,"route_diagnostics_count":len(routes),"route_change_counts":route_changes,"methodology":{"latency":"REST p95 and tails are ranked separately; WebSocket timestamp lag is labeled observed lag.","safety":"Public endpoints only; no API keys and no orders.","clock_quality":"Captured per host; observed lag is not exact one-way latency unless VERIFIED with a measured offset.","market_values":"Exchange-provided and not independently audited."}}
     json_path=root/"summary.json"; json_path.write_text(json.dumps(summary,indent=2),encoding="utf-8")
     ranking_rows=[]
     for i,r in enumerate(rankings,1):
-        ranking_rows.append({"rank":i,"exchange_id":r["exchange_id"],"overall_score":r["overall_score"],"confidence":r["confidence"],"evidence_coverage":r["evidence_coverage"],**{f"component_{k}":v for k,v in r["components"].items()},**{f"metric_{k}":v for k,v in r["raw_metrics"].items()}})
+        ranking_rows.append({"rank":i,"exchange_id":r["exchange_id"],"overall_score":r["overall_score"],"confidence":r["confidence"],"behavior_label":r.get("behavior_label"),"evidence_coverage":r["evidence_coverage"],**{f"component_{k}":v for k,v in r["components"].items()},**{f"metric_{k}":v for k,v in r["raw_metrics"].items()}})
     csv_path=root/"rankings.csv"; _write_csv(csv_path,ranking_rows)
     evidence_path=root/"probe_samples.csv"; _write_csv(evidence_path,samples)
     ws_path=root/"websocket_sessions.csv"; _write_csv(ws_path,websocket_rows)
     market_path=root/"market_quality.csv"; _write_csv(market_path,market_rows)
+    statistics_path=root/"metric_statistics.csv"; _write_csv(statistics_path,metric_statistics)
 
     md=[f"# CEX Latency Intelligence Report\n\nRun ID: `{run_id}`\n","> Observed from this host and connection. Results are not universal and do not represent order execution latency.\n","## Executive recommendation\n"]
     if recommendations["best_overall"]:
         rationale=recommendations["winner_rationale"]; strengths=", ".join(f"{item['name']} {item['score']:.1f}" for item in rationale["strongest_components"])
         md.append(f"Best measured technical compromise: **{recommendations['best_overall']}** (score {rationale['score']:.1f}, {rationale['confidence']} confidence, {rationale['evidence_coverage']:.0%} evidence coverage). It ranks first because its strongest normalized components are {strengths}. Best REST p95: **{recommendations['best_low_latency']}**; best observed stability: **{recommendations['best_stable']}**; broadest reported futures universe: **{recommendations['best_altcoin_breadth']}**. This is benchmark evidence, not financial advice.\n")
     else: md.append(f"No overall winner is declared because evidence quality is insufficient. Provisional REST p95 leader: **{recommendations['best_low_latency']}**; provisional broadest futures universe: **{recommendations['best_altcoin_breadth']}**.\n")
-    md.append("\n## Transparent ranking\n\n| Rank | Exchange | Score | Confidence | Coverage | REST p95 | Spread bps | Markets |\n|---:|---|---:|---|---:|---:|---:|---:|\n")
+    md.append("\n## Transparent ranking\n\n| Rank | Exchange | Score | Confidence | Behavior | Coverage | REST p95 | Spread bps | Markets |\n|---:|---|---:|---|---|---:|---:|---:|---:|\n")
     for i,r in enumerate(rankings,1):
         raw=r["raw_metrics"]; fmt=lambda v:"—" if v is None else f"{v:.2f}"
-        md.append(f"| {i} | {r['exchange_id']} | {r['overall_score']:.1f} | {r['confidence']} | {r['evidence_coverage']:.0%} | {fmt(raw.get('rest_p95'))} | {fmt(raw.get('spread_bps'))} | {raw.get('market_count') or '—'} |\n")
+        md.append(f"| {i} | {r['exchange_id']} | {r['overall_score']:.1f} | {r['confidence']} | {r.get('behavior_label', '—')} | {r['evidence_coverage']:.0%} | {fmt(raw.get('rest_p95'))} | {fmt(raw.get('spread_bps'))} | {raw.get('market_count') or '—'} |\n")
     md.append("\n## Evidence classification\n\n- **Measured:** individual probe samples, WebSocket sessions, and public order-book snapshots.\n- **Derived:** percentiles, jitter, spread, depth bands, normalized components, and confidence.\n- **Inferred:** relative suitability labels and provisional leaders.\n- **Unknown:** private order path, matching-engine location, and exact one-way latency without verified clock offset.\n")
+    unsuitable=recommendations["unsuitable_or_unproven"]
+    if unsuitable: md.append("\n## Unsuitable or unproven venues\n\n"+"".join(f"- **{row['exchange_id']}** — {row['reason']}.\n" for row in unsuitable))
+    md.append("\n## Next validation steps\n\n1. Complete every scheduled local-time campaign window without late substitution.\n2. Investigate failed or low-coverage endpoints and route changes.\n3. Regenerate the aggregate report and confirm the winner remains eligible under strict evidence rules.\n4. If order-path evidence is required, design a separate testnet/read-only safety phase; this MVP does not place orders.\n")
     md.append("\n## Limitations\n\n- Public market-data paths may differ from private order paths.\n- Observed timestamp lag is not true one-way latency unless clock quality is verified.\n- Exchange volume, open interest, funding, and depth are exchange-provided and not independently audited.\n- A short run cannot represent seven-day time-of-day behavior.\n")
     md_path=root/"executive-report.md"; md_path.write_text("".join(md),encoding="utf-8")
 
@@ -146,8 +186,9 @@ def generate_reports(run_id: str, rankings: list[dict[str, Any]], samples: list[
     nav="".join(f'<a href="#{anchor}">{html.escape(title)}</a>' for anchor,title,_ in figures)
     sections=[]
     for index,(anchor,title,figure) in enumerate(figures): sections.append(f'<section id="{anchor}"><h2>{html.escape(title)}</h2>{_figure_html(figure,index==0)}</section>')
-    route_rows="".join(f"<tr><td>{html.escape(r['exchange_id'])}</td><td>{html.escape(r['endpoint'])}</td><td><pre>{html.escape(r['output'][:4000])}</pre></td></tr>" for r in routes) or '<tr><td colspan="3">Route diagnostics were disabled for this run.</td></tr>'
+    route_rows="".join(f"<tr><td>{html.escape(r['exchange_id'])}</td><td>{html.escape(r['endpoint'])}</td><td>{r.get('summary',{}).get('hop_count','—')}</td><td>{r.get('summary',{}).get('suspected_bottleneck_hop') or '—'}</td><td>{html.escape(str(r.get('summary',{}).get('route_fingerprint') or '—'))}</td><td><pre>{html.escape(r['output'][:4000])}</pre></td></tr>" for r in routes) or '<tr><td colspan="6">Route diagnostics were disabled for this run.</td></tr>'
     raw_rows="".join(f"<tr><td>{html.escape(str(s.get('exchange_id')))}</td><td>{html.escape(str(s.get('probe_type')))}</td><td>{html.escape(str(s.get('duration_ms')))}</td><td>{html.escape(str(bool(s.get('success'))))}</td><td>{html.escape(str(s.get('error_class') or ''))}</td></tr>" for s in samples[:1000])
-    dashboard=f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>CEXLENS {html.escape(run_id)}</title><style>body{{margin:0;font:15px system-ui;color:#17213b;background:#f5f7fb}}nav{{position:sticky;top:0;z-index:3;display:flex;gap:16px;overflow:auto;padding:14px 24px;background:#111a33}}nav a{{color:#dce5ff;text-decoration:none;white-space:nowrap}}main{{max-width:1280px;margin:auto;padding:28px}}section{{background:white;border:1px solid #dfe5f1;border-radius:12px;padding:20px;margin:0 0 24px}}h1{{margin-top:0}}table{{border-collapse:collapse;width:100%}}th,td{{padding:9px;border-bottom:1px solid #e5e9f2;text-align:left}}pre{{white-space:pre-wrap;max-height:220px;overflow:auto}}.notice{{padding:14px;border-left:4px solid #f0ad2c;background:#fff8e6}}</style></head><body><nav>{nav}<a href="#routes">Route Diagnostics</a><a href="#raw">Raw Evidence</a><a href="#methodology">Methodology</a><a href="#limitations">Limitations</a></nav><main><h1>CEXLENS · {html.escape(run_id)}</h1><p class="notice">Public-endpoint evidence only. No orders, no credentials, and no claim of matching-engine latency.</p>{''.join(sections)}<section id="routes"><h2>Route Diagnostics</h2><table><tr><th>Exchange</th><th>Endpoint</th><th>Diagnostic output</th></tr>{route_rows}</table></section><section id="raw"><h2>Raw Evidence</h2><table><tr><th>Exchange</th><th>Probe</th><th>Duration ms</th><th>Success</th><th>Error</th></tr>{raw_rows}</table></section><section id="methodology"><h2>Methodology</h2><p>Monotonic clocks measure durations. Robust p10–p90 normalization, explicit missing-data penalties, and confidence weighting are applied to measured public-endpoint evidence.</p></section><section id="limitations"><h2>Limitations</h2><p>Exchange timestamps are observed lag, not exact one-way latency unless local clock quality is verified. Market values are exchange-provided and not independently audited. Public market-data performance does not prove private order-path performance.</p></section></main></body></html>'''
+    stats_rows="".join(f"<tr><td>{html.escape(str(r['exchange_id']))}</td><td>{html.escape(str(r['source']))}</td><td>{html.escape(str(r['probe_type']))}</td><td>{html.escape(str(r['metric']))}</td><td>{r.get('count',0)}</td><td>{r.get('success_rate',0):.1%}</td><td>{html.escape(str(r.get('median','—')))}</td><td>{html.escape(str(r.get('p95','—')))}</td><td>{html.escape(str(r.get('p99','—')))}</td></tr>" for r in metric_statistics)
+    dashboard=f'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>CEXLENS {html.escape(run_id)}</title><style>body{{margin:0;font:15px system-ui;color:#17213b;background:#f5f7fb}}nav{{position:sticky;top:0;z-index:3;display:flex;gap:16px;overflow:auto;padding:14px 24px;background:#111a33}}nav a{{color:#dce5ff;text-decoration:none;white-space:nowrap}}main{{max-width:1280px;margin:auto;padding:28px}}section{{background:white;border:1px solid #dfe5f1;border-radius:12px;padding:20px;margin:0 0 24px}}h1{{margin-top:0}}table{{border-collapse:collapse;width:100%}}th,td{{padding:9px;border-bottom:1px solid #e5e9f2;text-align:left}}pre{{white-space:pre-wrap;max-height:220px;overflow:auto}}.notice{{padding:14px;border-left:4px solid #f0ad2c;background:#fff8e6}}</style></head><body><nav>{nav}<a href="#statistics">Layer Statistics</a><a href="#routes">Route Diagnostics</a><a href="#raw">Raw Evidence</a><a href="#methodology">Methodology</a><a href="#limitations">Limitations</a></nav><main><h1>CEXLENS · {html.escape(run_id)}</h1><p class="notice">Public-endpoint evidence only. No orders, no credentials, and no claim of matching-engine latency.</p>{''.join(sections)}<section id="statistics"><h2>Layer Statistics</h2><table><tr><th>Exchange</th><th>Source</th><th>Probe</th><th>Metric</th><th>Count</th><th>Success</th><th>Median</th><th>p95</th><th>p99</th></tr>{stats_rows}</table></section><section id="routes"><h2>Route Diagnostics</h2><table><tr><th>Exchange</th><th>Endpoint</th><th>Hops</th><th>Suspected bottleneck hop</th><th>Fingerprint</th><th>Diagnostic output</th></tr>{route_rows}</table></section><section id="raw"><h2>Raw Evidence</h2><table><tr><th>Exchange</th><th>Probe</th><th>Duration ms</th><th>Success</th><th>Error</th></tr>{raw_rows}</table></section><section id="methodology"><h2>Methodology</h2><p>Monotonic clocks measure durations. Robust p10–p90 normalization, explicit missing-data penalties, and confidence weighting are applied to measured public-endpoint evidence.</p></section><section id="limitations"><h2>Limitations</h2><p>Exchange timestamps are observed lag, not exact one-way latency unless local clock offset is measured and verified. Market values are exchange-provided and not independently audited. Public market-data performance does not prove private order-path performance.</p></section></main></body></html>'''
     html_path=root/"dashboard.html"; html_path.write_text(dashboard,encoding="utf-8")
-    return {"html":str(html_path),"markdown":str(md_path),"json":str(json_path),"rankings_csv":str(csv_path),"samples_csv":str(evidence_path),"websockets_csv":str(ws_path),"market_quality_csv":str(market_path)}
+    return {"html":str(html_path),"markdown":str(md_path),"json":str(json_path),"rankings_csv":str(csv_path),"samples_csv":str(evidence_path),"websockets_csv":str(ws_path),"market_quality_csv":str(market_path),"statistics_csv":str(statistics_path)}

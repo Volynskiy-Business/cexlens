@@ -21,7 +21,7 @@ from .adapters import get_adapter
 from .config import AppConfig
 from .probes import probe_dns, probe_rest, probe_tcp, probe_tls, probe_websocket
 from .market_quality import collect_market_quality
-from .diagnostics import detect_clock_status, detect_network_identity, trace_route
+from .diagnostics import detect_clock_status, detect_network_identity, summarize_route, trace_route
 from .json_logging import JsonEventLogger
 from .reporting import generate_reports
 from .scoring import rank
@@ -91,7 +91,8 @@ async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int 
                         market=await collect_market_quality(run_id,adapter,symbol,client,index==0,exchange_bounded); store.add_orderbook(market)
                         if not market.success: logger.probe_error(run_id,exchange_id,"","orderbook",market.error_class,market.error_detail)
                 if config.probes.route_diagnostics:
-                    store.add_route(run_id,exchange_id,adapter.rest_url,await exchange_bounded(trace_route(adapter.rest_url,config.probes.route_max_hops)))
+                    route_output=await exchange_bounded(trace_route(adapter.rest_url,config.probes.route_max_hops))
+                    store.add_route(run_id,exchange_id,adapter.rest_url,route_output,summarize_route(route_output))
             try:
                 await asyncio.gather(*(run_exchange(e) for e in exchange_ids))
                 store.finish_run(run_id)

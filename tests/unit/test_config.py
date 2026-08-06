@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from cexlatency.config import AppConfig, CampaignConfig, ScoringConfig
+from cexlatency.config import AppConfig, CampaignConfig, RetentionConfig, ScoringConfig
 
 
 def test_default_config_has_ten_exchanges_and_three_symbols():
@@ -23,3 +23,8 @@ def test_weights_must_sum_to_one():
 def test_time_window_validation():
     with pytest.raises(ValidationError):
         CampaignConfig(windows_local=["25:99"])
+
+
+def test_retention_is_disabled_by_default_and_bounded():
+    assert RetentionConfig().benchmark_days is None
+    with pytest.raises(ValidationError): RetentionConfig(benchmark_days=0)
