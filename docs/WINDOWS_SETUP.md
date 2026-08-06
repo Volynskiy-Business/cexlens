@@ -23,6 +23,8 @@ For restart resilience, run `scripts\install-campaign-watchdog.ps1 -StartDate 20
 
 After completed windows, generate the aggregate dashboard with `cexlatency report --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
 
+Then run `cexlatency acceptance --config config/haifa-7day.yaml --campaign haifa-home-baseline`. It exits non-zero and prints `CEX_LATENCY_PLATFORM_MVP_NOT_READY` until every mandatory evidence and report check passes.
+
 Inspect progress at any time with `cexlatency status --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
 
 `tracert <hostname>` may be captured manually for route diagnosis. It is never treated as matching-engine latency. Docker is optional and not required.

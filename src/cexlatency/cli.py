@@ -15,6 +15,7 @@ from .runner import benchmark
 from .campaign import build_schedule, run_campaign
 from .scoring import rank
 from .storage import Storage
+from .validation import audit_campaign_acceptance
 
 
 def parse_duration(value: str) -> int:
@@ -42,6 +43,7 @@ def parser() -> argparse.ArgumentParser:
     c=command("campaign"); c.add_argument("--dry-run",action="store_true"); c.add_argument("--iterations",type=int); c.add_argument("--ws-duration",type=int); c.add_argument("--group",default="priority"); c.add_argument("--max-windows",type=int,default=1); c.add_argument("--daemon",action="store_true"); c.add_argument("--poll-seconds",type=int,default=30); c.add_argument("--start-date",type=date.fromisoformat)
     r=command("report"); r.add_argument("--run-id"); r.add_argument("--campaign")
     s=command("status"); s.add_argument("--campaign")
+    a=command("acceptance"); a.add_argument("--campaign")
     cleanup=command("retention"); cleanup.add_argument("--apply",action="store_true")
     command("validate")
     x=command("compare"); x.add_argument("--run-id",action="append",required=True)
@@ -89,6 +91,14 @@ async def _async_main(args: argparse.Namespace) -> int:
                 removed=store.prune_runs_before(cutoff) if args.apply else []
             result={"enabled":True,"cutoff_utc":cutoff,"candidate_run_ids":candidates,"applied":bool(args.apply),"removed_run_ids":removed,"preserved_campaign_runs":True,"report_files_preserved":True}
         print(json.dumps(result,indent=2) if args.json_output else json.dumps(result,indent=2)); return 0
+    if args.command=="acceptance":
+        name=args.campaign or config.campaign.name
+        with Storage(config.storage_path) as store: result=audit_campaign_acceptance(store,config,name)
+        if args.json_output: print(json.dumps(result,indent=2))
+        else:
+            print(result["gate"])
+            for check,passed in result["checks"].items(): print(f"{'PASS' if passed else 'FAIL'}  {check}")
+        return 0 if result["ready"] else 1
     if args.command=="report":
         with Storage(config.storage_path) as store:
             if args.campaign:
@@ -101,6 +111,7 @@ async def _async_main(args: argparse.Namespace) -> int:
                 if not report_id: raise ValueError("no benchmark run found")
                 samples=store.samples(report_id); ws=store.websockets(report_id); markets=store.orderbooks(report_id); routes=store.routes(report_id); window_count=1
             rankings=rank(samples,ws,sorted({s['exchange_id'] for s in samples}),config.scoring.weights,markets,window_count,len(config.benchmark_symbols())); paths=generate_reports(report_id,rankings,samples,config.report_directory,ws,markets,routes,config.campaign.timezone)
+            for kind,path in paths.items(): store.add_report(report_id,kind,path)
         print(json.dumps(paths,indent=2)); return 0
     if args.command=="compare":
         if len(args.run_id)!=2: raise ValueError("compare requires exactly two --run-id values")
