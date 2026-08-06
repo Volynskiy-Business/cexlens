@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -55,7 +56,8 @@ async def run_campaign(
         store.ensure_campaign_definition(name,definition_hash,definition)
         if store.campaign_window_count(name)==0:
             store.ensure_campaign_windows(name, build_schedule(config,resolved_start_date))
-        recovered = store.resume_campaign(name)
+        now=datetime.now(timezone.utc); legacy_stale_before=now-timedelta(minutes=config.campaign.window_lease_minutes)
+        recovered = store.resume_campaign(name,now.isoformat(),legacy_stale_before.isoformat())
     if recovered: progress(f"Recovered {recovered} interrupted campaign window(s)")
     processed = 0
     while processed < max_windows:
@@ -75,8 +77,10 @@ async def run_campaign(
             await asyncio.sleep(wait)
             continue
         window=due[0]
+        claimant=uuid.uuid4().hex
+        lease_expires=(datetime.now(timezone.utc)+timedelta(minutes=config.campaign.window_lease_minutes)).isoformat()
         with Storage(config.storage_path) as store:
-            if not store.claim_campaign_window(name,window["window_utc"]): continue
+            if not store.claim_campaign_window(name,window["window_utc"],claimant,lease_expires): continue
         progress(f"Campaign window {window['local_label']} started")
         run_id: str | None = None
         try:

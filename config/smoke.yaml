@@ -1,4 +1,4 @@
-campaign: {name: haifa-smoke-acceptance, timezone: Asia/Jerusalem, duration_days: 1, windows_local: ["00:00"], window_grace_minutes: 1440}
+campaign: {name: haifa-smoke-acceptance, timezone: Asia/Jerusalem, duration_days: 1, windows_local: ["00:00"], window_grace_minutes: 1440, window_lease_minutes: 180}
 exchanges: {priority: [binance, bybit, okx, bitget, gate, mexc, kucoin, kraken, bingx, phemex]}
 symbols: {major: [BTCUSDT, ETHUSDT, SOLUSDT]}
 probes: {iterations: 1, timeout_seconds: 8, websocket_observation_seconds: 3, bounded_concurrency: 3, per_exchange_concurrency: 1, jitter_ms: 50, warmup_iterations: 1, market_quality: true, route_diagnostics: false}

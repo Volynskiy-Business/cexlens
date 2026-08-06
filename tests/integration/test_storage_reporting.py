@@ -24,10 +24,11 @@ def test_campaign_window_claim_completion_and_resume(tmp_path):
         store.ensure_campaign_windows("c", [("2026-01-01T00:00:00+00:00", "2026-01-01T02:00:00+02:00"), ("2026-01-02T00:00:00+00:00", "2026-01-02T02:00:00+02:00")])
         due = store.due_campaign_windows("c", "2026-01-01T01:00:00+00:00")
         assert len(due) == 1
-        assert store.claim_campaign_window("c", due[0]["window_utc"])
+        assert store.claim_campaign_window("c", due[0]["window_utc"],"worker","2026-01-01T03:00:00+00:00")
         assert not store.claim_campaign_window("c", due[0]["window_utc"])
-        assert store.resume_campaign("c") == 1
-        assert store.claim_campaign_window("c", due[0]["window_utc"])
+        assert store.resume_campaign("c","2026-01-01T01:00:00+00:00","2025-12-31T22:00:00+00:00") == 0
+        assert store.resume_campaign("c","2026-01-01T04:00:00+00:00","2026-01-01T01:00:00+00:00") == 1
+        assert store.claim_campaign_window("c", due[0]["window_utc"],"worker2","2026-01-01T06:00:00+00:00")
         store.finish_campaign_window("c", due[0]["window_utc"], "run42")
         assert store.campaign_summary("c")["COMPLETED"] == 1
         assert store.campaign_run_ids("c") == ["run42"]

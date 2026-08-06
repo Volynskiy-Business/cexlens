@@ -26,6 +26,7 @@ class CampaignConfig(BaseModel):
     duration_days: int = Field(default=7, ge=1, le=90)
     windows_local: list[str] = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]
     window_grace_minutes: int = Field(default=30, ge=1, le=1440)
+    window_lease_minutes: int = Field(default=180, ge=30, le=720)
 
     @field_validator("windows_local")
     @classmethod

@@ -8,4 +8,6 @@ The host record contains only an anonymized host ID, a host-salted SHA-256 publi
 
 Campaign windows have an explicit grace period. A pending window older than that period becomes `MISSED` and is never relabeled with late measurements. The complete campaign definition is SHA-256 fingerprinted and immutable under its name.
 
+Every claimed window has a unique worker token and a bounded lease. Concurrent launchers cannot reclaim an active window; an interrupted window is recoverable only after its lease expires and remains subject to the original grace rule.
+
 Endpoint reachability, HTTP status, sample size, tail behavior, and evidence coverage should be inspected before acting on a ranking. Exchange-provided volume or timestamps are not independently audited.

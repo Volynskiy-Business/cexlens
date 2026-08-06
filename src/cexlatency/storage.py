@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS exchange_capabilities (exchange_id TEXT PRIMARY KEY, 
 CREATE TABLE IF NOT EXISTS score_snapshots (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, exchange_id TEXT NOT NULL, overall_score REAL, confidence TEXT NOT NULL, components_json TEXT NOT NULL, raw_metrics_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS report_artifacts (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS errors (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, endpoint TEXT, probe_type TEXT, timestamp TEXT, exception_type TEXT, retry_number INTEGER, classification TEXT, recoverable INTEGER, detail TEXT);
-CREATE TABLE IF NOT EXISTS campaign_windows (campaign_name TEXT NOT NULL, window_utc TEXT NOT NULL, local_label TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', run_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL, PRIMARY KEY(campaign_name, window_utc));
+CREATE TABLE IF NOT EXISTS campaign_windows (campaign_name TEXT NOT NULL, window_utc TEXT NOT NULL, local_label TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', run_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL, claimed_by TEXT, lease_expires_at TEXT, PRIMARY KEY(campaign_name, window_utc));
 CREATE TABLE IF NOT EXISTS campaign_definitions (campaign_name TEXT PRIMARY KEY, definition_hash TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL);
 """
 
@@ -37,6 +37,8 @@ class Storage:
         self.connection.executescript(SCHEMA)
         self._ensure_column("hosts","network_interface","TEXT")
         self._ensure_column("hosts","isp_name","TEXT")
+        self._ensure_column("campaign_windows","claimed_by","TEXT")
+        self._ensure_column("campaign_windows","lease_expires_at","TEXT")
 
     def _ensure_column(self, table: str, column: str, declaration: str) -> None:
         columns={row[1] for row in self.connection.execute(f"PRAGMA table_info({table})")}
@@ -139,8 +141,8 @@ class Storage:
     def campaign_window_count(self, campaign_name: str) -> int:
         return int(self.connection.execute("SELECT count(*) FROM campaign_windows WHERE campaign_name=?",(campaign_name,)).fetchone()[0])
 
-    def resume_campaign(self, campaign_name: str) -> int:
-        cursor = self.connection.execute("UPDATE campaign_windows SET status='PENDING',last_error='Recovered after interrupted process',updated_at=? WHERE campaign_name=? AND status='RUNNING'", (utc_now(), campaign_name))
+    def resume_campaign(self, campaign_name: str, now_utc: str, legacy_stale_before_utc: str) -> int:
+        cursor = self.connection.execute("UPDATE campaign_windows SET status='PENDING',claimed_by=NULL,lease_expires_at=NULL,last_error='Recovered after expired campaign lease',updated_at=? WHERE campaign_name=? AND status='RUNNING' AND ((lease_expires_at IS NOT NULL AND lease_expires_at<?) OR (lease_expires_at IS NULL AND updated_at<?))", (utc_now(),campaign_name,now_utc,legacy_stale_before_utc))
         self.connection.commit()
         return cursor.rowcount
 
@@ -152,13 +154,13 @@ class Storage:
     def due_campaign_windows(self, campaign_name: str, now_utc: str, limit: int = 1) -> list[dict[str, Any]]:
         return [dict(r) for r in self.connection.execute("SELECT * FROM campaign_windows WHERE campaign_name=? AND status='PENDING' AND window_utc<=? ORDER BY window_utc LIMIT ?", (campaign_name, now_utc, limit))]
 
-    def claim_campaign_window(self, campaign_name: str, window_utc: str) -> bool:
-        cursor = self.connection.execute("UPDATE campaign_windows SET status='RUNNING',attempts=attempts+1,updated_at=? WHERE campaign_name=? AND window_utc=? AND status='PENDING'", (utc_now(),campaign_name,window_utc))
+    def claim_campaign_window(self, campaign_name: str, window_utc: str, claimed_by: str = "local", lease_expires_at: str | None = None) -> bool:
+        cursor = self.connection.execute("UPDATE campaign_windows SET status='RUNNING',attempts=attempts+1,claimed_by=?,lease_expires_at=?,updated_at=? WHERE campaign_name=? AND window_utc=? AND status='PENDING'", (claimed_by,lease_expires_at,utc_now(),campaign_name,window_utc))
         self.connection.commit()
         return cursor.rowcount == 1
 
     def finish_campaign_window(self, campaign_name: str, window_utc: str, run_id: str | None, error: str | None = None) -> None:
-        self.connection.execute("UPDATE campaign_windows SET status=?,run_id=?,last_error=?,updated_at=? WHERE campaign_name=? AND window_utc=?", ("FAILED" if error else "COMPLETED",run_id,error,utc_now(),campaign_name,window_utc))
+        self.connection.execute("UPDATE campaign_windows SET status=?,run_id=?,last_error=?,claimed_by=NULL,lease_expires_at=NULL,updated_at=? WHERE campaign_name=? AND window_utc=?", ("FAILED" if error else "COMPLETED",run_id,error,utc_now(),campaign_name,window_utc))
         self.connection.commit()
 
     def campaign_summary(self, campaign_name: str) -> dict[str, int]:
@@ -175,7 +177,7 @@ class Storage:
         return [r[0] for r in self.connection.execute("SELECT run_id FROM campaign_windows WHERE campaign_name=? AND status='COMPLETED' AND run_id IS NOT NULL ORDER BY window_utc",(campaign_name,))]
 
     def campaign_windows(self, campaign_name: str) -> list[dict[str, Any]]:
-        return [dict(r) for r in self.connection.execute("SELECT window_utc,local_label,status,run_id,attempts,last_error,updated_at FROM campaign_windows WHERE campaign_name=? ORDER BY window_utc",(campaign_name,))]
+        return [dict(r) for r in self.connection.execute("SELECT window_utc,local_label,status,run_id,attempts,last_error,claimed_by,lease_expires_at,updated_at FROM campaign_windows WHERE campaign_name=? ORDER BY window_utc",(campaign_name,))]
 
     def samples_for_runs(self, run_ids: list[str]) -> list[dict[str, Any]]:
         return [sample for run_id in run_ids for sample in self.samples(run_id)]

@@ -3,6 +3,7 @@ campaign:
   timezone: Asia/Jerusalem
   duration_days: 7
   window_grace_minutes: 30
+  window_lease_minutes: 180
   windows_local: ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"]
 exchanges:
   priority: [binance, bybit, okx, bitget, gate, mexc, kucoin, kraken, bingx, phemex]
