@@ -33,6 +33,6 @@ try {
     Write-WatchdogLog "runner exit=$($process.ExitCode)"
     exit $process.ExitCode
 } catch {
-    Write-WatchdogLog "runner failed: $($_.Exception.Message)"
+    Write-WatchdogLog "runner failed at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message); stack=$($_.ScriptStackTrace)"
     exit 1
 }
