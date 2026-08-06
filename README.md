@@ -18,7 +18,7 @@ CEXLENS is an evidence-first benchmarking platform for comparing public futures-
 - Robust p50/p75/p90/p95/p99 statistics, jitter, MAD, outlier count, failure rate, and confidence grading.
 - SQLite evidence store with normalized entities and explicit error records.
 - Multi-section HTML dashboard with local-time heatmaps, Markdown executive report with per-recommendation rationale, JSON summary, and layer-specific CSV exports retaining raw timing metadata.
-- Resumable UTC/local campaign windows and aggregated multi-window reporting.
+- Resumable UTC/local campaign windows with automatic final aggregate reporting and fail-closed acceptance audit.
 - Native Windows 11 workflow with PowerShell; Docker is not required.
 
 ## Quick start (PowerShell)

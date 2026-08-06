@@ -21,7 +21,7 @@ To schedule a clean future start, pass the local calendar date explicitly, for e
 
 For restart resilience, run `scripts\install-campaign-watchdog.ps1 -StartDate 2026-08-07`. The watchdog checks every 30 minutes, uses Task Scheduler's `IgnoreNew` policy, requests wake-to-run, remains eligible on battery power, and the application-level lock exits duplicate daemon launchers safely.
 
-After completed windows, generate the aggregate dashboard with `cexlatency report --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
+After the final window, the supervised daemon automatically generates the aggregate dashboard and runs the acceptance audit. It can be regenerated manually with `cexlatency report --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
 
 Then run `cexlatency acceptance --config config/haifa-7day.yaml --campaign haifa-home-baseline`. It exits non-zero and prints `CEX_LATENCY_PLATFORM_MVP_NOT_READY` until every mandatory evidence and report check passes.
 

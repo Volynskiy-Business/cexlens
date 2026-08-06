@@ -20,7 +20,7 @@ This matrix maps the production specification to executable or persisted evidenc
 | Confidence uses duration and cross-window consistency | Verified | Sample/success/endpoint coverage, actual WS seconds, windows, REST p95 CV, timestamp quality; unit tests |
 | Normalized SQLite model and retention | Verified | All minimum entities in `src/cexlatency/storage.py`; preview/apply retention tests preserve campaign runs |
 | Production CLI behavior | Verified | discover, benchmark, campaign, status, report, compare, retention, validate; dry-run/JSON/resume/cancellation paths |
-| Fail-closed acceptance validation | Verified | `cexlatency acceptance` audits windows, run uniqueness, normalized evidence coverage, reproducibility, aggregate artifacts, and eligible recommendation |
+| Fail-closed acceptance validation | Verified | `cexlatency acceptance` audits windows, run uniqueness, normalized evidence coverage, reproducibility, aggregate artifacts, and eligible recommendation; the final campaign window triggers report generation and this audit automatically |
 | HTML, Markdown, CSV, JSON reporting | Verified | Reporting integration test and generated run artifacts; local-time heatmap and per-recommendation rationale |
 | Structured logs and explicit errors | Verified | `src/cexlatency/json_logging.py`; `errors` table; logging tests |
 | Native Windows setup and supervision | Verified | Windows CI 3.12/3.13; `scripts/cexlatency.ps1`; battery-safe, wake-enabled Task Scheduler watchdog |

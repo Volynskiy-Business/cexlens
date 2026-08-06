@@ -50,6 +50,27 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def _campaign_complete(summary: dict[str,int], expected_windows: int) -> bool:
+    return summary.get("COMPLETED",0)==expected_windows and all(summary.get(state,0)==0 for state in ("PENDING","RUNNING","FAILED","MISSED"))
+
+
+def _generate_stored_report(config, run_id: str | None = None, campaign_name: str | None = None) -> tuple[str,dict[str,str]]:
+    with Storage(config.storage_path) as store:
+        if campaign_name:
+            run_ids=store.campaign_run_ids(campaign_name)
+            if not run_ids: raise ValueError(f"campaign has no completed windows: {campaign_name}")
+            report_id="campaign-"+"".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in campaign_name)
+            samples=store.samples_for_runs(run_ids); ws=store.websockets_for_runs(run_ids); markets=store.orderbooks_for_runs(run_ids); routes=store.routes_for_runs(run_ids); window_count=len(run_ids)
+        else:
+            report_id=run_id or store.latest_run_id()
+            if not report_id: raise ValueError("no benchmark run found")
+            samples=store.samples(report_id); ws=store.websockets(report_id); markets=store.orderbooks(report_id); routes=store.routes(report_id); window_count=1
+        rankings=rank(samples,ws,sorted({s['exchange_id'] for s in samples}),config.scoring.weights,markets,window_count,len(config.benchmark_symbols()))
+        paths=generate_reports(report_id,rankings,samples,config.report_directory,ws,markets,routes,config.campaign.timezone)
+        for kind,path in paths.items(): store.add_report(report_id,kind,path)
+    return report_id,paths
+
+
 async def _async_main(args: argparse.Namespace) -> int:
     config=load_config(args.config)
     if args.command=="discover":
@@ -68,6 +89,10 @@ async def _async_main(args: argparse.Namespace) -> int:
         if args.dry_run:
             print(json.dumps({"campaign":config.campaign.model_dump(),"schedule":[{"utc":u,"local":l} for u,l in build_schedule(config,args.start_date)],"exchanges":exchanges},indent=2,default=str)); return 0
         result=await run_campaign(config,exchanges,args.iterations,args.ws_duration,args.max_windows,args.daemon,args.poll_seconds,lambda s: None if args.json_output else print(s,flush=True),args.start_date)
+        expected=config.campaign.duration_days*len(config.campaign.windows_local)
+        if _campaign_complete(result["summary"],expected):
+            _,paths=_generate_stored_report(config,campaign_name=config.campaign.name); result["reports"]=paths
+            with Storage(config.storage_path) as store: result["acceptance"]=audit_campaign_acceptance(store,config,config.campaign.name)
         print(json.dumps(result,indent=2)); return 0
     if args.command=="status":
         name=args.campaign or config.campaign.name
@@ -100,18 +125,7 @@ async def _async_main(args: argparse.Namespace) -> int:
             for check,passed in result["checks"].items(): print(f"{'PASS' if passed else 'FAIL'}  {check}")
         return 0 if result["ready"] else 1
     if args.command=="report":
-        with Storage(config.storage_path) as store:
-            if args.campaign:
-                run_ids=store.campaign_run_ids(args.campaign)
-                if not run_ids: raise ValueError(f"campaign has no completed windows: {args.campaign}")
-                report_id="campaign-"+"".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in args.campaign)
-                samples=store.samples_for_runs(run_ids); ws=store.websockets_for_runs(run_ids); markets=store.orderbooks_for_runs(run_ids); routes=store.routes_for_runs(run_ids); window_count=len(run_ids)
-            else:
-                report_id=args.run_id or store.latest_run_id()
-                if not report_id: raise ValueError("no benchmark run found")
-                samples=store.samples(report_id); ws=store.websockets(report_id); markets=store.orderbooks(report_id); routes=store.routes(report_id); window_count=1
-            rankings=rank(samples,ws,sorted({s['exchange_id'] for s in samples}),config.scoring.weights,markets,window_count,len(config.benchmark_symbols())); paths=generate_reports(report_id,rankings,samples,config.report_directory,ws,markets,routes,config.campaign.timezone)
-            for kind,path in paths.items(): store.add_report(report_id,kind,path)
+        _,paths=_generate_stored_report(config,args.run_id,args.campaign)
         print(json.dumps(paths,indent=2)); return 0
     if args.command=="compare":
         if len(args.run_id)!=2: raise ValueError("compare requires exactly two --run-id values")

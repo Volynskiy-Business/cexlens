@@ -2,7 +2,7 @@ import argparse
 
 import pytest
 
-from cexlatency.cli import parse_duration, parser
+from cexlatency.cli import _campaign_complete, parse_duration, parser
 from cexlatency.runner import _continue_rest_probing
 
 
@@ -27,3 +27,8 @@ def test_config_is_accepted_before_or_after_command():
 def test_fixed_duration_has_no_hidden_500_iteration_cutoff():
     assert _continue_rest_probing(500,1,1000.0,999.0)
     assert not _continue_rest_probing(500,1,1000.0,1000.0)
+
+
+def test_campaign_completion_requires_every_window_and_no_failure_state():
+    assert _campaign_complete({"COMPLETED":42,"PENDING":0,"RUNNING":0,"FAILED":0,"MISSED":0},42)
+    assert not _campaign_complete({"COMPLETED":41,"PENDING":1,"RUNNING":0,"FAILED":0,"MISSED":0},42)
