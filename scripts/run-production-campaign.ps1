@@ -14,8 +14,11 @@ function Write-WatchdogLog([string]$Message) {
 }
 
 try {
-    $wslRoot = (& wsl.exe -e wslpath -a $root).Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $wslRoot) { throw 'Could not resolve project path inside WSL.' }
+    $resolvedRoot = (Resolve-Path -LiteralPath $root).Path
+    if ($resolvedRoot -notmatch '^([A-Za-z]):\\(.*)$') { throw 'The project must be stored on a Windows drive visible to WSL.' }
+    $drive = $Matches[1].ToLowerInvariant()
+    $relativeRoot = $Matches[2].Replace('\', '/')
+    $wslRoot = "/mnt/$drive/$relativeRoot"
     if ($wslRoot.Contains("'")) { throw 'Project path containing an apostrophe is unsupported.' }
 
     $script = "cd '$wslRoot' && exec env PYTHONPATH=src python3 -m cexlatency.cli campaign --config config/haifa-7day.yaml --start-date $StartDate --daemon --max-windows 42 --poll-seconds 30 >> data/campaign-daemon.log 2>&1"
