@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from cexlatency.campaign import build_schedule
+from cexlatency.campaign import CampaignProcessLock, build_schedule
 from cexlatency.config import AppConfig, CampaignConfig
 
 
@@ -16,3 +16,12 @@ def test_schedule_accepts_explicit_future_local_date():
     from datetime import date
     config=AppConfig(campaign=CampaignConfig(timezone="Asia/Jerusalem",duration_days=1,windows_local=["00:00"]))
     assert build_schedule(config,date(2026,8,7))[0][1] == "2026-08-07T00:00:00+03:00"
+
+
+def test_daemon_process_lock_rejects_duplicate(tmp_path):
+    first=CampaignProcessLock(str(tmp_path/"data.db"),"campaign")
+    second=CampaignProcessLock(str(tmp_path/"data.db"),"campaign")
+    assert first.acquire()
+    try: assert not second.acquire()
+    finally: first.release()
+    assert second.acquire(); second.release()

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import uuid
+from pathlib import Path
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -12,6 +13,41 @@ from .config import AppConfig
 from .models import utc_now
 from .runner import benchmark
 from .storage import Storage
+
+
+class CampaignProcessLock:
+    def __init__(self, storage_path: str, campaign_name: str):
+        safe="".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in campaign_name)
+        self.path=Path(storage_path).parent/f".{safe}.lock"
+        self.handle=None
+
+    def acquire(self) -> bool:
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        self.handle=self.path.open("a+")
+        try:
+            if __import__("os").name=="nt":
+                import msvcrt
+                self.handle.seek(0); self.handle.write("0"); self.handle.flush(); self.handle.seek(0)
+                msvcrt.locking(self.handle.fileno(),msvcrt.LK_NBLCK,1)
+            else:
+                import fcntl
+                fcntl.flock(self.handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            return True
+        except (BlockingIOError,OSError):
+            self.handle.close(); self.handle=None
+            return False
+
+    def release(self) -> None:
+        if not self.handle: return
+        try:
+            if __import__("os").name=="nt":
+                import msvcrt
+                self.handle.seek(0); msvcrt.locking(self.handle.fileno(),msvcrt.LK_UNLCK,1)
+            else:
+                import fcntl
+                fcntl.flock(self.handle.fileno(),fcntl.LOCK_UN)
+        finally:
+            self.handle.close(); self.handle=None
 
 
 def build_schedule(config: AppConfig, start_local_date: date | datetime | None = None) -> list[tuple[str, str]]:
@@ -32,7 +68,7 @@ def build_schedule(config: AppConfig, start_local_date: date | datetime | None =
     return sorted(rows)
 
 
-async def run_campaign(
+async def _run_campaign_unlocked(
     config: AppConfig,
     exchange_ids: list[str],
     iterations: int | None = None,
@@ -96,3 +132,24 @@ async def run_campaign(
         processed += 1
     with Storage(config.storage_path) as store:
         return {"campaign":name,"processed":processed,"run_ids":completed_runs,"summary":store.campaign_summary(name),"next_window_utc":store.next_campaign_window(name)}
+
+
+async def run_campaign(
+    config: AppConfig,
+    exchange_ids: list[str],
+    iterations: int | None = None,
+    ws_duration: int | None = None,
+    max_windows: int = 1,
+    daemon: bool = False,
+    poll_seconds: int = 30,
+    progress: Callable[[str], None] = print,
+    start_local_date: date | None = None,
+) -> dict[str, Any]:
+    lock=CampaignProcessLock(config.storage_path,config.campaign.name) if daemon else None
+    if lock and not lock.acquire():
+        progress(f"Campaign {config.campaign.name} daemon is already running; exiting duplicate launcher")
+        return {"campaign":config.campaign.name,"status":"ALREADY_RUNNING","processed":0,"run_ids":[]}
+    try:
+        return await _run_campaign_unlocked(config,exchange_ids,iterations,ws_duration,max_windows,daemon,poll_seconds,progress,start_local_date)
+    finally:
+        if lock: lock.release()
