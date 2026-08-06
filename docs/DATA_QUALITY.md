@@ -2,7 +2,7 @@
 
 Every failed probe is stored with a classification rather than discarded. Rankings distinguish measured facts (samples), derived metrics (percentiles and jitter), inferred conclusions (relative score), and unknowns (clock quality and private order paths).
 
-The host record contains only an anonymized host ID, a host-salted SHA-256 public-IP hash, interfaces, ISP label, OS/Python/timezone, and clock diagnostic. Raw public IP is not persisted. Every run snapshots configuration, Git SHA, adapter capabilities, endpoints, and symbol mappings.
+The host record contains only an anonymized host ID, a host-salted SHA-256 public-IP hash, interfaces, ISP label, OS/Python/timezone, and clock diagnostic. When running under WSL, physical Windows adapters are distinguished from the virtual runtime interface. Raw public IP is not persisted. Every run snapshots configuration, Git SHA, adapter capabilities, endpoints, and symbol mappings.
 
 `HIGH` confidence requires broad sampling, very high success, multiple daily windows, at least 1,800 seconds of accumulated WebSocket observation per exchange, and verified clock quality. A single smoke run will normally remain `LOW` or `INSUFFICIENT`.
 

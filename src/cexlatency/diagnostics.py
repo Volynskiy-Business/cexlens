@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import platform
 import re
 import shutil
@@ -93,8 +94,25 @@ def summarize_route(output: str) -> dict[str,int | float | str | None]:
     }
 
 
+def _parse_windows_adapters(output: str) -> list[str]:
+    try:
+        payload=json.loads(output.lstrip("\ufeff").strip())
+    except (json.JSONDecodeError,TypeError):
+        return []
+    rows=payload if isinstance(payload,list) else [payload]
+    return sorted(
+        f"{row.get('Name')} [{row.get('InterfaceDescription')}]"
+        for row in rows
+        if isinstance(row,dict) and row.get("Name") and row.get("HardwareInterface") is True and row.get("Virtual") is not True
+    )
+
+
 async def detect_network_identity(host_id: str, timeout: float = 8) -> dict[str, str | None]:
     interfaces=sorted({name for _,name in socket.if_nameindex() if name and name.lower() not in {"lo","loopback"} and "loopback" not in name.lower()})
+    physical_interfaces=[]
+    if platform.system() != "Windows" and shutil.which("powershell.exe"):
+        code,output=await _command("powershell.exe","-NoProfile","-Command","Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object Name,InterfaceDescription,HardwareInterface,Virtual | ConvertTo-Json -Compress",timeout=timeout)
+        if code == 0: physical_interfaces=_parse_windows_adapters(output)
     public_ip_hash=None; isp_name=None
     try:
         async with httpx.AsyncClient(timeout=timeout,follow_redirects=True,headers={"User-Agent":"cexlatency/0.1 metadata"}) as client:
@@ -105,4 +123,6 @@ async def detect_network_identity(host_id: str, timeout: float = 8) -> dict[str,
             isp_name=data.get("org")
     except Exception:
         pass
-    return {"network_interface":", ".join(interfaces) or None,"public_ip_hash":public_ip_hash,"isp_name":isp_name}
+    runtime=", ".join(interfaces)
+    interface_evidence=("Windows physical: "+", ".join(physical_interfaces)+("; runtime: "+runtime if runtime else "")) if physical_interfaces else runtime
+    return {"network_interface":interface_evidence or None,"public_ip_hash":public_ip_hash,"isp_name":isp_name}

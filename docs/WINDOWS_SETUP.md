@@ -19,7 +19,7 @@ The production config allows a 30-minute claim grace period. If the computer is 
 
 To schedule a clean future start, pass the local calendar date explicitly, for example `cexlatency campaign --config config/haifa-7day.yaml --start-date 2026-08-07 --daemon --max-windows 42`.
 
-For restart resilience, run `scripts\install-campaign-watchdog.ps1 -StartDate 2026-08-07`. The watchdog checks every 30 minutes, uses Task Scheduler's `IgnoreNew` policy, and the application-level lock exits duplicate daemon launchers safely.
+For restart resilience, run `scripts\install-campaign-watchdog.ps1 -StartDate 2026-08-07`. The watchdog checks every 30 minutes, uses Task Scheduler's `IgnoreNew` policy, requests wake-to-run, remains eligible on battery power, and the application-level lock exits duplicate daemon launchers safely.
 
 After completed windows, generate the aggregate dashboard with `cexlatency report --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
 
