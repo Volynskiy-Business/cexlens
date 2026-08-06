@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
@@ -13,15 +13,20 @@ from .runner import benchmark
 from .storage import Storage
 
 
-def build_schedule(config: AppConfig, start_local_date: datetime | None = None) -> list[tuple[str, str]]:
+def build_schedule(config: AppConfig, start_local_date: date | datetime | None = None) -> list[tuple[str, str]]:
     zone = ZoneInfo(config.campaign.timezone)
-    start = start_local_date.astimezone(zone) if start_local_date else datetime.now(zone)
+    if isinstance(start_local_date,datetime):
+        start_date=start_local_date.astimezone(zone).date() if start_local_date.tzinfo else start_local_date.date()
+    elif isinstance(start_local_date,date):
+        start_date=start_local_date
+    else:
+        start_date=datetime.now(zone).date()
     rows: list[tuple[str, str]] = []
     for day_offset in range(config.campaign.duration_days):
-        date = start.date() + timedelta(days=day_offset)
+        current_date = start_date + timedelta(days=day_offset)
         for hhmm in config.campaign.windows_local:
             hour, minute = map(int, hhmm.split(":"))
-            local = datetime(date.year,date.month,date.day,hour,minute,tzinfo=zone)
+            local = datetime(current_date.year,current_date.month,current_date.day,hour,minute,tzinfo=zone)
             rows.append((local.astimezone(timezone.utc).isoformat(), local.isoformat()))
     return sorted(rows)
 
@@ -35,15 +40,21 @@ async def run_campaign(
     daemon: bool = False,
     poll_seconds: int = 30,
     progress: Callable[[str], None] = print,
+    start_local_date: date | None = None,
 ) -> dict[str, Any]:
     name = config.campaign.name
     completed_runs: list[str] = []
-    definition=config.model_dump()
-    definition_hash=hashlib.sha256(json.dumps(definition,sort_keys=True,separators=(",",":")).encode()).hexdigest()
     with Storage(config.storage_path) as store:
+        existing_definition=store.campaign_definition(name)
+        if start_local_date is None and existing_definition:
+            resolved_start_date=date.fromisoformat(existing_definition["resolved_start_date_local"])
+        else:
+            resolved_start_date=start_local_date or datetime.now(ZoneInfo(config.campaign.timezone)).date()
+        definition=config.model_dump(mode="json"); definition["resolved_start_date_local"]=resolved_start_date.isoformat()
+        definition_hash=hashlib.sha256(json.dumps(definition,sort_keys=True,separators=(",",":")).encode()).hexdigest()
         store.ensure_campaign_definition(name,definition_hash,definition)
         if store.campaign_window_count(name)==0:
-            store.ensure_campaign_windows(name, build_schedule(config))
+            store.ensure_campaign_windows(name, build_schedule(config,resolved_start_date))
         recovered = store.resume_campaign(name)
     if recovered: progress(f"Recovered {recovered} interrupted campaign window(s)")
     processed = 0

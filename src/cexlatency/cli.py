@@ -5,6 +5,7 @@ import asyncio
 import json
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
 
 from .adapters import REGISTRY
@@ -38,7 +39,7 @@ def parser() -> argparse.ArgumentParser:
         return result
     command("discover")
     b=command("benchmark"); b.add_argument("--exchange",action="append"); b.add_argument("--group",default="priority"); b.add_argument("--iterations",type=int); b.add_argument("--duration",type=parse_duration); b.add_argument("--ws-duration",type=int); b.add_argument("--dry-run",action="store_true")
-    c=command("campaign"); c.add_argument("--dry-run",action="store_true"); c.add_argument("--iterations",type=int); c.add_argument("--ws-duration",type=int); c.add_argument("--group",default="priority"); c.add_argument("--max-windows",type=int,default=1); c.add_argument("--daemon",action="store_true"); c.add_argument("--poll-seconds",type=int,default=30)
+    c=command("campaign"); c.add_argument("--dry-run",action="store_true"); c.add_argument("--iterations",type=int); c.add_argument("--ws-duration",type=int); c.add_argument("--group",default="priority"); c.add_argument("--max-windows",type=int,default=1); c.add_argument("--daemon",action="store_true"); c.add_argument("--poll-seconds",type=int,default=30); c.add_argument("--start-date",type=date.fromisoformat)
     r=command("report"); r.add_argument("--run-id"); r.add_argument("--campaign")
     command("validate")
     x=command("compare"); x.add_argument("--run-id",action="append",required=True)
@@ -61,8 +62,8 @@ async def _async_main(args: argparse.Namespace) -> int:
     if args.command=="campaign":
         exchanges=config.selected_exchanges(args.group)
         if args.dry_run:
-            print(json.dumps({"campaign":config.campaign.model_dump(),"schedule":[{"utc":u,"local":l} for u,l in build_schedule(config)],"exchanges":exchanges},indent=2)); return 0
-        result=await run_campaign(config,exchanges,args.iterations,args.ws_duration,args.max_windows,args.daemon,args.poll_seconds,lambda s: None if args.json_output else print(s))
+            print(json.dumps({"campaign":config.campaign.model_dump(),"schedule":[{"utc":u,"local":l} for u,l in build_schedule(config,args.start_date)],"exchanges":exchanges},indent=2,default=str)); return 0
+        result=await run_campaign(config,exchanges,args.iterations,args.ws_duration,args.max_windows,args.daemon,args.poll_seconds,lambda s: None if args.json_output else print(s),args.start_date)
         print(json.dumps(result,indent=2)); return 0
     if args.command=="report":
         with Storage(config.storage_path) as store:

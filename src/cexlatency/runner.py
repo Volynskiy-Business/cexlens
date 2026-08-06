@@ -59,6 +59,9 @@ async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int 
                     store.add_sample(sample)
                     if not sample.success: logger.probe_error(run_id,exchange_id,sample.endpoint,sample.probe_type,sample.error_class,sample.error_detail)
                 await asyncio.sleep(random.uniform(0,config.probes.jitter_ms/1000))
+                for _ in range(config.probes.warmup_iterations):
+                    warmup=await bounded(probe_rest(run_id,adapter,client,config.probes.timeout_seconds,False)); warmup.probe_type="rest_warmup"; store.add_sample(warmup)
+                    if not warmup.success: logger.probe_error(run_id,exchange_id,warmup.endpoint,warmup.probe_type,warmup.error_class,warmup.error_detail)
                 deadline=time.monotonic()+duration_seconds if duration_seconds else None; i=0
                 while i<iterations or (deadline is not None and time.monotonic()<deadline and i<500):
                     for sample in (await bounded(probe_rest(run_id,adapter,client,config.probes.timeout_seconds,False)),await bounded(probe_rest(run_id,adapter,None,config.probes.timeout_seconds,True))):

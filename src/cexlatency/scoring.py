@@ -33,7 +33,7 @@ def rank(samples: list[dict[str, Any]], websocket_rows: list[dict[str, Any]], ex
         if row.get("success"): market_grouped[row["exchange_id"]].append(row)
     raw: dict[str,dict[str,Any]]={}
     for ex in exchange_ids:
-        rest=[s for s in grouped[ex] if s["probe_type"].startswith("rest")]
+        rest=[s for s in grouped[ex] if s["probe_type"] in {"rest_reuse","rest_fresh"}]
         stat=summarize([s["duration_ms"] if s["success"] else None for s in rest],len(rest))
         tcp=[s for s in grouped[ex] if s["probe_type"]=="tcp"]
         tcp_stat=summarize([s["duration_ms"] if s["success"] else None for s in tcp],len(tcp))

@@ -17,6 +17,8 @@ For periodic runs, create a Windows Task Scheduler action targeting `.venv\Scrip
 
 The production config allows a 30-minute claim grace period. If the computer is asleep beyond it, the window becomes `MISSED` instead of contaminating the intended time-of-day sample. Use a new campaign name to restart with a changed definition.
 
+To schedule a clean future start, pass the local calendar date explicitly, for example `cexlatency campaign --config config/haifa-7day.yaml --start-date 2026-08-07 --daemon --max-windows 42`.
+
 After completed windows, generate the aggregate dashboard with `cexlatency report --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
 
 `tracert <hostname>` may be captured manually for route diagnosis. It is never treated as matching-engine latency. Docker is optional and not required.

@@ -132,6 +132,10 @@ class Storage:
         self.connection.execute("INSERT OR IGNORE INTO campaign_definitions (campaign_name,definition_hash,config_json,created_at) VALUES (?,?,?,?)",(campaign_name,definition_hash,json.dumps(config,sort_keys=True),utc_now()))
         self.connection.commit()
 
+    def campaign_definition(self, campaign_name: str) -> dict[str, Any] | None:
+        row=self.connection.execute("SELECT config_json FROM campaign_definitions WHERE campaign_name=?",(campaign_name,)).fetchone()
+        return json.loads(row[0]) if row else None
+
     def campaign_window_count(self, campaign_name: str) -> int:
         return int(self.connection.execute("SELECT count(*) FROM campaign_windows WHERE campaign_name=?",(campaign_name,)).fetchone()[0])
 

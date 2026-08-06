@@ -8,6 +8,8 @@ Observed timestamp lag equals local UTC receive time minus the exchange event ti
 
 Campaigns use bounded concurrency, one exchange coroutine at a time per venue, randomized inter-probe jitter, conservative public endpoints, and short payloads. A seven-day conclusion requires all configured time windows; a smoke run only validates mechanics.
 
+Each venue receives a separately labeled REST warm-up before measured fresh/reused iterations. Warm-up samples remain auditable in SQLite but are excluded from distributions and scoring.
+
 Order-book snapshots are normalized into best bid/ask, spread in basis points, and approximate quote notional within 5, 10, and 25 bps of mid. Contract-size conventions differ by venue; depth, volume, open interest, and funding are labeled exchange-provided and are not independently audited. Three canonical symbols are collected per venue.
 
 WebSocket sessions measure handshake, subscription acknowledgement where explicit, first message, heartbeat RTT, inter-arrival distribution, stale periods, malformed and duplicate messages, and a controlled reconnect. Sequence gaps are evaluated only when the selected channel declares a contiguous counter.

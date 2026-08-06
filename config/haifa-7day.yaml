@@ -15,6 +15,7 @@ probes:
   bounded_concurrency: 5
   per_exchange_concurrency: 1
   jitter_ms: 250
+  warmup_iterations: 1
   market_quality: true
   route_diagnostics: true
   route_max_hops: 20

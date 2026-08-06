@@ -93,7 +93,7 @@ def generate_reports(run_id: str, rankings: list[dict[str, Any]], samples: list[
     figures.append(("ranking","Exchange Ranking",components))
     latency=go.Figure()
     for exchange in names:
-        values=[s["duration_ms"] for s in samples if s["exchange_id"]==exchange and s["probe_type"].startswith("rest") and s.get("success") and s.get("duration_ms") is not None]
+        values=[s["duration_ms"] for s in samples if s["exchange_id"]==exchange and s["probe_type"] in {"rest_reuse","rest_fresh"} and s.get("success") and s.get("duration_ms") is not None]
         latency.add_trace(go.Box(y=values,name=exchange,boxpoints="outliers"))
     latency.update_layout(title="REST latency distribution",yaxis_title="Milliseconds")
     figures.append(("distribution","Latency Distribution",latency))
@@ -103,7 +103,7 @@ def generate_reports(run_id: str, rankings: list[dict[str, Any]], samples: list[
     figures.append(("tails","Tail Latency",tails))
     timeline=go.Figure()
     for exchange in names:
-        rows=[s for s in samples if s["exchange_id"]==exchange and s["probe_type"].startswith("rest") and s.get("success")]
+        rows=[s for s in samples if s["exchange_id"]==exchange and s["probe_type"] in {"rest_reuse","rest_fresh"} and s.get("success")]
         timeline.add_scatter(name=exchange,x=[s["started_at"] for s in rows],y=[s["duration_ms"] for s in rows],mode="lines+markers")
     timeline.update_layout(title="Latency over time",yaxis_title="Milliseconds")
     figures.append(("timeline","Latency Over Time",timeline))
