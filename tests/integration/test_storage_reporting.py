@@ -16,7 +16,12 @@ def test_sqlite_round_trip_and_all_report_formats(tmp_path):
     paths = generate_reports("run1", rankings, samples, tmp_path / "reports")
     assert set(paths) == {"html", "markdown", "json", "rankings_csv", "samples_csv", "websockets_csv", "market_quality_csv"}
     assert all((tmp_path / "reports" / "run1" / name).exists() for name in ("dashboard.html", "executive-report.md", "summary.json", "rankings.csv", "probe_samples.csv", "websocket_sessions.csv", "market_quality.csv"))
-    assert json.loads((tmp_path / "reports" / "run1" / "summary.json").read_text())["recommendation"] == "binance"
+    summary=json.loads((tmp_path / "reports" / "run1" / "summary.json").read_text())
+    assert summary["recommendation"] == "binance"
+    assert summary["recommendations"]["winner_rationale"]["confidence"] == "MEDIUM"
+    dashboard=(tmp_path / "reports" / "run1" / "dashboard.html").read_text()
+    for section in ("Executive Overview","Exchange Ranking","Latency Distribution","Tail Latency","WebSocket Stability","Time-of-Day Comparison","Route Diagnostics","Order-Book Quality","Futures Coverage","Raw Evidence","Methodology","Limitations","Jitter Over Time","Reconnect Duration"):
+        assert section in dashboard
 
 
 def test_campaign_window_claim_completion_and_resume(tmp_path):

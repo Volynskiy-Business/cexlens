@@ -13,4 +13,4 @@
 | BingX | Yes | Yes, gzip frames | `BTC-USDT` | Live smoke verified |
 | Phemex | Yes | Yes | `BTCUSDT` | Live smoke verified |
 
-Live verification refers to smoke run `30c515ac2072` from the user's connection on 2026-08-06: 10/10 REST, 10/10 WebSocket, and 30/30 order-book snapshots. It does not guarantee future or universal reachability. Every adapter has a sanitized fixture.
+Live verification refers to smoke run `03bad502ba00` from the user's connection on 2026-08-06: 20/20 measured REST requests, 30/30 per-symbol WebSocket sessions, 30/30 order-book snapshots, and 30/30 recent-trade frequency samples. It does not guarantee future or universal reachability. Every adapter has a sanitized fixture.

@@ -72,6 +72,10 @@ class AppConfig(BaseModel):
             raise ValueError(f"unknown exchange group: {group}")
         return self.exchanges[group]
 
+    def benchmark_symbols(self) -> list[str]:
+        """Return every configured symbol once, preserving YAML group order."""
+        return list(dict.fromkeys(symbol for group in self.symbols.values() for symbol in group))
+
 
 def load_config(path: str | Path) -> AppConfig:
     config_path = Path(path)

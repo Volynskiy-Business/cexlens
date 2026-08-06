@@ -20,8 +20,20 @@ def test_missing_data_is_penalized_and_insufficient():
 
 def test_incomplete_exchange_cannot_outrank_complete_evidence():
     samples=[sample("complete",x) for x in range(10,30)]+[sample("incomplete",1)]
-    ws=[{"exchange_id":"complete","first_message_ms":50,"p95_interval_ms":10,"disconnects":0}]
-    markets=[{"exchange_id":"complete","success":True,"spread_bps":1,"bid_depth_10bps":100,"ask_depth_10bps":100,"quote_volume_24h":1000,"futures_market_count":10} for _ in range(3)]
+    ws=[{"exchange_id":"complete","symbol":symbol,"success":True,"first_message_ms":50,"p95_interval_ms":10,"disconnects":0,"messages":100} for symbol in ("BTCUSDT","ETHUSDT","SOLUSDT")]
+    markets=[{"exchange_id":"complete","symbol":symbol,"success":True,"spread_bps":1,"bid_depth_10bps":100,"ask_depth_10bps":100,"quote_volume_24h":1000,"trade_frequency_hz":10,"futures_market_count":10} for symbol in ("BTCUSDT","ETHUSDT","SOLUSDT")]
     result=rank(samples,ws,["complete","incomplete"],ScoringConfig().weights,markets)
     assert result[0]["exchange_id"] == "complete"
     assert result[1]["confidence"] == "INSUFFICIENT"
+
+
+def test_websocket_instability_penalizes_bad_events_and_disconnects():
+    samples=[sample(ex,x) for ex in ("stable","unstable") for x in range(10,30)]
+    ws=[]; markets=[]
+    for ex in ("stable","unstable"):
+        for symbol in ("BTCUSDT","ETHUSDT","SOLUSDT"):
+            ws.append({"exchange_id":ex,"symbol":symbol,"success":True,"first_message_ms":50,"p95_interval_ms":10,"messages":100,"disconnects":0 if ex=="stable" else 2,"sequence_gaps":0 if ex=="stable" else 20})
+            markets.append({"exchange_id":ex,"symbol":symbol,"success":True,"spread_bps":1,"bid_depth_10bps":100,"ask_depth_10bps":100,"quote_volume_24h":1000,"trade_frequency_hz":10,"futures_market_count":10})
+    result={row["exchange_id"]:row for row in rank(samples,ws,["stable","unstable"],ScoringConfig().weights,markets)}
+    assert result["stable"]["components"]["websocket"] > result["unstable"]["components"]["websocket"]
+    assert result["stable"]["raw_metrics"]["ws_instability"] < result["unstable"]["raw_metrics"]["ws_instability"]

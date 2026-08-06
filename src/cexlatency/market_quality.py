@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable,Callable
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -107,6 +109,38 @@ def extract_market_count(exchange_id: str, payload: Any) -> int | None:
     return len(rows) if isinstance(rows, list) else None
 
 
+def _epoch_seconds(value: Any) -> float | None:
+    if isinstance(value,str) and not value.replace(".","",1).isdigit():
+        try: return datetime.fromisoformat(value.replace("Z","+00:00")).timestamp()
+        except ValueError: return None
+    timestamp=_number(value)
+    if timestamp is None: return None
+    if timestamp > 1e17: timestamp /= 1e9
+    elif timestamp > 1e14: timestamp /= 1e6
+    elif timestamp > 1e11: timestamp /= 1e3
+    return timestamp if timestamp > 1e9 else None
+
+
+def extract_trade_frequency(exchange_id: str, payload: Any) -> dict[str,float | int | None]:
+    if exchange_id == "binance": rows=payload
+    elif exchange_id == "bybit": rows=_at(payload,"result","list")
+    elif exchange_id in {"okx","bitget","mexc","kucoin","bingx"}: rows=_at(payload,"data")
+    elif exchange_id == "gate": rows=payload
+    elif exchange_id == "kraken": rows=_at(payload,"history")
+    elif exchange_id == "phemex": rows=_at(payload,"result","trades_p")
+    else: rows=None
+    if not isinstance(rows,list): raise ValueError("recent-trade response has no usable list")
+    fields={"binance":"time","bybit":"time","okx":"ts","bitget":"ts","gate":"create_time","mexc":"t","kucoin":"ts","kraken":"time","bingx":"time"}
+    timestamps=[]
+    for row in rows:
+        value=row[0] if exchange_id=="phemex" and isinstance(row,list) and row else row.get(fields.get(exchange_id,"")) if isinstance(row,dict) else None
+        timestamp=_epoch_seconds(value)
+        if timestamp is not None: timestamps.append(timestamp)
+    span=max(timestamps)-min(timestamps) if len(timestamps)>=2 else None
+    frequency=(len(timestamps)-1)/span if span and span>0 else None
+    return {"trade_count_sample":len(timestamps),"trade_sample_span_seconds":span,"trade_frequency_hz":frequency}
+
+
 def calculate_depth(bids: list[tuple[float, float]], asks: list[tuple[float, float]]) -> dict[str, float]:
     if not bids or not asks:
         raise ValueError("order book has no usable bid/ask levels")
@@ -136,16 +170,20 @@ async def _json(client: httpx.AsyncClient, url: str | None) -> Any:
     return response.json()
 
 
-async def collect_market_quality(run_id: str, adapter: AdapterSpec, symbol: str, client: httpx.AsyncClient, include_market_count: bool = False) -> OrderBookQuality:
+async def collect_market_quality(run_id: str, adapter: AdapterSpec, symbol: str, client: httpx.AsyncClient, include_market_count: bool = False, request_limiter: Callable[[Awaitable[Any]],Awaitable[Any]] | None = None) -> OrderBookQuality:
     native = adapter.native_symbol(symbol)
     started = time.perf_counter()
     try:
-        urls = [adapter.formatted_url(adapter.orderbook_url, symbol), adapter.formatted_url(adapter.ticker_url, symbol), adapter.formatted_url(adapter.open_interest_url, symbol), adapter.formatted_url(adapter.funding_url, symbol)]
-        book_payload, ticker_payload, oi_payload, funding_payload = await asyncio.gather(*(_json(client, u) for u in urls))
+        urls = [adapter.formatted_url(adapter.orderbook_url, symbol), adapter.formatted_url(adapter.ticker_url, symbol), adapter.formatted_url(adapter.open_interest_url, symbol), adapter.formatted_url(adapter.funding_url, symbol),adapter.formatted_url(adapter.trades_url,symbol)]
+        async def fetch(url: str | None) -> Any:
+            request=_json(client,url)
+            return await request_limiter(request) if request_limiter else await request
+        book_payload, ticker_payload, oi_payload, funding_payload, trades_payload = await asyncio.gather(*(fetch(u) for u in urls))
         latency_ms = (time.perf_counter() - started) * 1000
         bids, asks = extract_book(adapter.exchange_id, book_payload)
         depth = calculate_depth(bids, asks)
         ticker = extract_ticker(adapter.exchange_id, ticker_payload, native)
+        trades=extract_trade_frequency(adapter.exchange_id,trades_payload)
         if isinstance(oi_payload, dict):
             oi_row = _at(oi_payload, "data", 0) if adapter.exchange_id == "okx" else oi_payload
             if isinstance(oi_row, dict): ticker["open_interest"] = _number(oi_row.get("openInterest", oi_row.get("oi"))) or ticker["open_interest"]
@@ -154,7 +192,7 @@ async def collect_market_quality(run_id: str, adapter: AdapterSpec, symbol: str,
             if isinstance(funding_row, dict): ticker["funding_rate"] = _number(funding_row.get("lastFundingRate", funding_row.get("fundingRate"))) or ticker["funding_rate"]
         market_count = None
         if include_market_count and adapter.market_metadata_url:
-            market_count = extract_market_count(adapter.exchange_id, await _json(client, adapter.market_metadata_url))
-        return OrderBookQuality(run_id, adapter.exchange_id, symbol, native, True, utc_now(), snapshot_latency_ms=latency_ms, futures_market_count=market_count, metadata={"depth_unit": "approximate_quote_notional", "source": "exchange_public_api"}, **depth, **ticker)
+            market_count = extract_market_count(adapter.exchange_id, await fetch(adapter.market_metadata_url))
+        return OrderBookQuality(run_id, adapter.exchange_id, symbol, native, True, utc_now(), snapshot_latency_ms=latency_ms, futures_market_count=market_count, metadata={"depth_unit": "approximate_quote_notional", "source": "exchange_public_api","trade_frequency_method":"recent_public_trades_sample"}, **depth, **ticker,**trades)
     except Exception as exc:
         return OrderBookQuality(run_id, adapter.exchange_id, symbol, native, False, utc_now(), snapshot_latency_ms=(time.perf_counter()-started)*1000, error_class="MARKET_DATA_ERROR", error_detail=f"{type(exc).__name__}: {exc}")

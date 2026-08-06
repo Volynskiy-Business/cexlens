@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cex-latency-platform"
-version = "0.2.0"
+version = "0.3.0"
 description = "Auditable public-endpoint latency intelligence for centralized exchanges"
 readme = "README.md"
 requires-python = ">=3.12"

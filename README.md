@@ -14,7 +14,7 @@ CEXLENS is an evidence-first benchmarking platform for comparing public futures-
 
 - Consistent adapter contract for Binance, Bybit, OKX, Bitget, Gate.io, MEXC, KuCoin Futures, Kraken Futures, BingX, and Phemex.
 - Async first/warm DNS, TCP, TLS, fresh/reused REST, heartbeat/reconnect WebSocket, route, and clock-quality diagnostics.
-- Three-symbol order-book telemetry with spread, 5/10/25 bps depth, volume, open interest, funding, and futures coverage.
+- Three-symbol WebSocket and order-book telemetry with spread, 5/10/25 bps depth, recent-trade frequency, volume, open interest, funding, and futures coverage.
 - Robust p50/p75/p90/p95/p99 statistics, jitter, MAD, outlier count, failure rate, and confidence grading.
 - SQLite evidence store with normalized entities and explicit error records.
 - Multi-section HTML dashboard, Markdown executive report, JSON summary, and layer-specific CSV exports.

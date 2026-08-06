@@ -7,3 +7,4 @@
 - NTP offset is recorded when the operating system exposes it; otherwise synchronization state is recorded without an exact offset.
 - Live integration checks depend on geography, exchange policy, DNS, and internet availability.
 - Public market-data latency is not private order acknowledgement latency.
+- Recent-trade frequency is a bounded snapshot estimate, not a full-day independently audited trade count.

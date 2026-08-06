@@ -64,6 +64,7 @@ class WebSocketSummary:
     malformed_messages: int = 0
     disconnects: int = 0
     message_rate_hz: float = 0.0
+    mean_interval_ms: float | None = None
     median_interval_ms: float | None = None
     p95_interval_ms: float | None = None
     median_observed_lag_ms: float | None = None
@@ -104,6 +105,9 @@ class OrderBookQuality:
     quote_volume_24h: float | None = None
     open_interest: float | None = None
     funding_rate: float | None = None
+    trade_count_sample: int | None = None
+    trade_sample_span_seconds: float | None = None
+    trade_frequency_hz: float | None = None
     futures_market_count: int | None = None
     snapshot_latency_ms: float | None = None
     timestamp_quality: str = "EXCHANGE_PROVIDED"

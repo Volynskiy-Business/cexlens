@@ -10,6 +10,11 @@ def test_default_config_has_ten_exchanges_and_three_symbols():
     assert config.symbols["major"] == ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 
 
+def test_benchmark_symbols_flattens_configured_groups_without_duplicates():
+    config=AppConfig(symbols={"major":["BTCUSDT","ETHUSDT"],"mid_cap":["ETHUSDT","LINKUSDT"]})
+    assert config.benchmark_symbols() == ["BTCUSDT","ETHUSDT","LINKUSDT"]
+
+
 def test_weights_must_sum_to_one():
     with pytest.raises(ValidationError):
         ScoringConfig(weights={"rest_p95": 0.4})
@@ -18,4 +23,3 @@ def test_weights_must_sum_to_one():
 def test_time_window_validation():
     with pytest.raises(ValidationError):
         CampaignConfig(windows_local=["25:99"])
-

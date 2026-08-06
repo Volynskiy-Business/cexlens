@@ -6,12 +6,12 @@ Fresh and reused HTTP connections are measured separately. The former includes s
 
 Observed timestamp lag equals local UTC receive time minus the exchange event timestamp. Clock skew can dominate it, so the metric remains `UNKNOWN` quality until an independent OS/NTP check exists. It is never described as true one-way latency.
 
-Campaigns use bounded concurrency, one exchange coroutine at a time per venue, randomized inter-probe jitter, conservative public endpoints, and short payloads. A seven-day conclusion requires all configured time windows; a smoke run only validates mechanics.
+Campaigns use both a global concurrency bound and a configurable per-exchange semaphore, randomized inter-probe jitter, conservative public endpoints, and short payloads. A seven-day conclusion requires all configured time windows; a smoke run only validates mechanics.
 
 Each venue receives a separately labeled REST warm-up before measured fresh/reused iterations. Warm-up samples remain auditable in SQLite but are excluded from distributions and scoring.
 
-Order-book snapshots are normalized into best bid/ask, spread in basis points, and approximate quote notional within 5, 10, and 25 bps of mid. Contract-size conventions differ by venue; depth, volume, open interest, and funding are labeled exchange-provided and are not independently audited. Three canonical symbols are collected per venue.
+Order-book snapshots are normalized into best bid/ask, spread in basis points, and approximate quote notional within 5, 10, and 25 bps of mid. Recent public trades provide a bounded sample count, sample span, and observed trades per second. This is a recent-sample frequency estimate, not a 24-hour average. Contract-size conventions differ by venue; depth, volume, open interest, funding, and trades are exchange-provided and are not independently audited. Every configured symbol group is flattened without duplicates; the default campaign collects BTCUSDT, ETHUSDT, and SOLUSDT.
 
-WebSocket sessions measure handshake, subscription acknowledgement where explicit, first message, heartbeat RTT, inter-arrival distribution, stale periods, malformed and duplicate messages, and a controlled reconnect. Sequence gaps are evaluated only when the selected channel declares a contiguous counter.
+WebSocket sessions run separately for every configured symbol and measure handshake, subscription acknowledgement where explicit, first valid market-data message, heartbeat RTT, mean/median/p95 inter-arrival distribution, stale periods, malformed and duplicate messages, and controlled reconnect-to-first-data recovery. Sequence gaps are evaluated only when the selected channel declares a contiguous counter.
 
 Route diagnostics are diagnostic evidence and cannot identify a matching-engine location. ICMP ping is intentionally absent from the ranking.

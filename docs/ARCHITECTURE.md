@@ -13,7 +13,9 @@ flowchart LR
   CLI["CLI / campaign"] --> CFG["Validated YAML"]
   CFG --> REG["Adapter registry"]
   REG --> PROBES["DNS · TCP · TLS · REST · WebSocket"]
+  REG --> MARKET["Order books · recent trades · market metadata"]
   PROBES --> DB[("SQLite evidence")]
+  MARKET --> DB
   DB --> METRICS["Robust statistics"]
   METRICS --> SCORE["Transparent scoring + confidence"]
   SCORE --> REPORTS["HTML · Markdown · CSV · JSON"]

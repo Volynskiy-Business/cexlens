@@ -10,4 +10,4 @@ Campaign windows have an explicit grace period. A pending window older than that
 
 Every claimed window has a unique worker token and a bounded lease. Concurrent launchers cannot reclaim an active window; an interrupted window is recoverable only after its lease expires and remains subject to the original grace rule.
 
-Endpoint reachability, HTTP status, sample size, tail behavior, and evidence coverage should be inspected before acting on a ranking. Exchange-provided volume or timestamps are not independently audited.
+Endpoint reachability, HTTP status, sample size, tail behavior, and evidence coverage should be inspected before acting on a ranking. Recent-trade frequency is derived from the timestamp span of a bounded latest-trades response and can vary sharply with sampling time. Exchange-provided trades, volume, or timestamps are not independently audited.

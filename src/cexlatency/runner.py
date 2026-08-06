@@ -52,32 +52,46 @@ async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int 
 
             async def run_exchange(exchange_id: str) -> None:
                 adapter=get_adapter(exchange_id); progress(f"[{exchange_id}] probing public endpoints")
+                exchange_semaphore=asyncio.Semaphore(config.probes.per_exchange_concurrency)
+                async def exchange_bounded(awaitable):
+                    async with exchange_semaphore:
+                        return await bounded(awaitable)
                 store.register_adapter(exchange_id,adapter.display_name,__version__,await adapter.discover_public_endpoints(),await adapter.list_supported_markets(),{"websocket":adapter.websocket_supported,"timestamp_fields":adapter.timestamp_fields,"sequence_contiguous":adapter.sequence_contiguous,"rate_limit_policy":adapter.rate_limit_note,"notes":adapter.notes})
                 tls_context=ssl.create_default_context(); tls_context.set_alpn_protocols(["h2","http/1.1"])
-                diagnostic_samples=[await bounded(probe_dns(run_id,adapter,adapter.rest_url,config.probes.timeout_seconds,"first_observed")),await bounded(probe_dns(run_id,adapter,adapter.rest_url,config.probes.timeout_seconds,"warm")),await bounded(probe_tcp(run_id,adapter,adapter.rest_url,config.probes.timeout_seconds)),await bounded(probe_tls(run_id,adapter,adapter.rest_url,config.probes.timeout_seconds,tls_context,"full")),await bounded(probe_tls(run_id,adapter,adapter.rest_url,config.probes.timeout_seconds,tls_context,"resumption_attempt"))]
+                diagnostic_urls=list(dict.fromkeys(url for url in (adapter.rest_url,adapter.ws_url) if url))
+                diagnostic_samples=[]
+                for diagnostic_url in diagnostic_urls:
+                    diagnostic_samples.extend([
+                        await exchange_bounded(probe_dns(run_id,adapter,diagnostic_url,config.probes.timeout_seconds,"first_observed")),
+                        await exchange_bounded(probe_dns(run_id,adapter,diagnostic_url,config.probes.timeout_seconds,"warm")),
+                        await exchange_bounded(probe_tcp(run_id,adapter,diagnostic_url,config.probes.timeout_seconds)),
+                        await exchange_bounded(probe_tls(run_id,adapter,diagnostic_url,config.probes.timeout_seconds,tls_context,"full")),
+                        await exchange_bounded(probe_tls(run_id,adapter,diagnostic_url,config.probes.timeout_seconds,tls_context,"resumption_attempt")),
+                    ])
                 for sample in diagnostic_samples:
                     store.add_sample(sample)
                     if not sample.success: logger.probe_error(run_id,exchange_id,sample.endpoint,sample.probe_type,sample.error_class,sample.error_detail)
                 await asyncio.sleep(random.uniform(0,config.probes.jitter_ms/1000))
                 for _ in range(config.probes.warmup_iterations):
-                    warmup=await bounded(probe_rest(run_id,adapter,client,config.probes.timeout_seconds,False)); warmup.probe_type="rest_warmup"; store.add_sample(warmup)
+                    warmup=await exchange_bounded(probe_rest(run_id,adapter,client,config.probes.timeout_seconds,False)); warmup.probe_type="rest_warmup"; store.add_sample(warmup)
                     if not warmup.success: logger.probe_error(run_id,exchange_id,warmup.endpoint,warmup.probe_type,warmup.error_class,warmup.error_detail)
                 deadline=time.monotonic()+duration_seconds if duration_seconds else None; i=0
                 while i<iterations or (deadline is not None and time.monotonic()<deadline and i<500):
-                    for sample in (await bounded(probe_rest(run_id,adapter,client,config.probes.timeout_seconds,False)),await bounded(probe_rest(run_id,adapter,None,config.probes.timeout_seconds,True))):
+                    for sample in (await exchange_bounded(probe_rest(run_id,adapter,client,config.probes.timeout_seconds,False)),await exchange_bounded(probe_rest(run_id,adapter,None,config.probes.timeout_seconds,True))):
                         store.add_sample(sample)
                         if not sample.success: logger.probe_error(run_id,exchange_id,sample.endpoint,sample.probe_type,sample.error_class,sample.error_detail)
                     i+=1
                     if i<iterations or (deadline is not None and time.monotonic()<deadline): await asyncio.sleep(random.uniform(0,config.probes.jitter_ms/1000))
                 if ws_duration>0:
-                    ws_sample=await bounded(probe_websocket(run_id,adapter,config.symbols["major"][0],ws_duration,config.probes.timeout_seconds,clock.quality)); store.add_websocket(ws_sample)
-                    if not ws_sample.success: logger.probe_error(run_id,exchange_id,ws_sample.endpoint,"websocket",ws_sample.error_class,ws_sample.error_detail)
+                    for symbol in config.benchmark_symbols():
+                        ws_sample=await exchange_bounded(probe_websocket(run_id,adapter,symbol,ws_duration,config.probes.timeout_seconds,clock.quality)); store.add_websocket(ws_sample)
+                        if not ws_sample.success: logger.probe_error(run_id,exchange_id,ws_sample.endpoint,"websocket",ws_sample.error_class,ws_sample.error_detail)
                 if config.probes.market_quality:
-                    for index, symbol in enumerate(config.symbols["major"]):
-                        market=await bounded(collect_market_quality(run_id,adapter,symbol,client,index==0)); store.add_orderbook(market)
+                    for index, symbol in enumerate(config.benchmark_symbols()):
+                        market=await collect_market_quality(run_id,adapter,symbol,client,index==0,exchange_bounded); store.add_orderbook(market)
                         if not market.success: logger.probe_error(run_id,exchange_id,"","orderbook",market.error_class,market.error_detail)
                 if config.probes.route_diagnostics:
-                    store.add_route(run_id,exchange_id,adapter.rest_url,await bounded(trace_route(adapter.rest_url,config.probes.route_max_hops)))
+                    store.add_route(run_id,exchange_id,adapter.rest_url,await exchange_bounded(trace_route(adapter.rest_url,config.probes.route_max_hops)))
             try:
                 await asyncio.gather(*(run_exchange(e) for e in exchange_ids))
                 store.finish_run(run_id)
@@ -86,7 +100,7 @@ async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int 
                 store.finish_run(run_id,"INTERRUPTED"); logger.emit("benchmark_completed",run_id=run_id,status="INTERRUPTED"); raise
             except Exception as exc:
                 store.finish_run(run_id,"FAILED"); logger.emit("benchmark_completed",run_id=run_id,status="FAILED",exception_type=type(exc).__name__,detail=str(exc)); raise
-        samples=store.samples(run_id); ws=store.websockets(run_id); markets=store.orderbooks(run_id); rankings=rank(samples,ws,exchange_ids,config.scoring.weights,markets)
+        samples=store.samples(run_id); ws=store.websockets(run_id); markets=store.orderbooks(run_id); rankings=rank(samples,ws,exchange_ids,config.scoring.weights,markets,required_symbol_count=len(config.benchmark_symbols()))
         for row in rankings: store.save_score(run_id,row)
         paths=generate_reports(run_id,rankings,samples,config.report_directory,ws,markets,store.routes(run_id))
         for kind,path in paths.items(): store.add_report(run_id,kind,path)

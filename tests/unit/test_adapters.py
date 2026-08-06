@@ -16,6 +16,7 @@ def test_all_adapters_declare_market_quality_and_websocket_paths():
     for adapter in REGISTRY.values():
         assert adapter.orderbook_url
         assert adapter.ticker_url
+        assert adapter.trades_url
         assert adapter.market_metadata_url
         assert adapter.websocket_supported
         assert callable(adapter.probe_rest)
