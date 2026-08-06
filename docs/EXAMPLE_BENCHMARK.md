@@ -14,6 +14,10 @@ Numeric rankings are intentionally not reproduced as decision evidence because e
 
 The scheduler itself was validated by campaign `haifa-smoke-acceptance`: its due window was atomically claimed, completed as run `6672d3066fe3`, persisted with `COMPLETED` status and one attempt, and regenerated as an aggregate campaign dashboard. Evidence counts were again REST 20/20, WebSocket 10/10, order books 30/30, errors 0.
 
+## Current-commit production preflight
+
+Run `1d0119f1ff4c` was executed on commit `eff5d1a2f3ebee1ade4b48ca21b28ec96bcf1626` after Windows/WSL clock and watchdog hardening. With intentionally short one-second WebSocket windows it produced REST 20/20, DNS/TCP/TLS 95/95, market quality 30/30, and WebSocket 29/30. Gate/SOL did not deliver a valid message inside that deliberately abbreviated second and was persisted as `INSUFFICIENT_SAMPLE`; no evidence was silently promoted. The host record captured the physical Intel Ethernet interface, ISP label, `time.nist.gov` clock source, and a measured offset near −171 ms as `MEASURED_OFFSET_OUT_OF_BOUNDS`. All eight report artifact types were generated. This preflight validates the current integrated mechanics but is not decision evidence and does not substitute for the 600-second × 42-window production campaign.
+
 Example command:
 
 ```powershell
