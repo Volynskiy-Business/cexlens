@@ -1,4 +1,4 @@
-from cexlatency.diagnostics import _parse_windows_adapters, summarize_route
+from cexlatency.diagnostics import _parse_windows_adapters, _windows_clock_status, summarize_route
 
 
 def test_windows_route_summary_extracts_hops_and_bottleneck():
@@ -30,3 +30,16 @@ def test_linux_route_summary_handles_fractional_latency():
 def test_windows_adapter_parser_excludes_virtual_interfaces():
     output='[{"Name":"Ethernet","InterfaceDescription":"Intel NIC","HardwareInterface":true,"Virtual":false},{"Name":"Tailscale","InterfaceDescription":"Tunnel","HardwareInterface":false,"Virtual":true}]'
     assert _parse_windows_adapters(output) == ["Ethernet [Intel NIC]"]
+
+
+def test_localized_windows_clock_offset_is_measured_and_fail_closed():
+    clock=_windows_clock_status(0,"Источник: time.nist.gov,0x8\nКонечный автомат: 2 (Синхронизовать)","04:45:40, -00.1736114s","test")
+    assert clock.synchronized is True
+    assert clock.source == "time.nist.gov,0x8"
+    assert clock.offset_ms == -173.6114
+    assert clock.quality == "MEASURED_OFFSET_OUT_OF_BOUNDS"
+
+
+def test_windows_clock_is_verified_only_inside_offset_bound():
+    clock=_windows_clock_status(0,"Source: time.example","12:00:00, +00.0125000s","test")
+    assert clock.quality == "VERIFIED"

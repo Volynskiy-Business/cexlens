@@ -48,6 +48,10 @@ async def benchmark(config: AppConfig, exchange_ids: list[str], iterations: int 
         store.start_run(run_id,config.model_dump(),host_id,__version__,_git_sha())
         store.upsert_host(host_id,host_id,platform.platform(),platform.python_version(),str(__import__("datetime").datetime.now().astimezone().tzinfo),clock,network)
         logger.emit("benchmark_started",run_id=run_id,exchanges=exchange_ids,version=__version__,clock_quality=clock.quality,duration_seconds=duration_seconds)
+        if clock.quality != "VERIFIED":
+            detail=f"clock quality={clock.quality}; source={clock.source}; measured_offset_ms={clock.offset_ms}"
+            store.add_error(run_id,"__host__","local-clock","clock","CLOCK_QUALITY_UNKNOWN",detail)
+            logger.probe_error(run_id,"__host__","local-clock","clock","CLOCK_QUALITY_UNKNOWN",detail)
         semaphore=asyncio.Semaphore(config.probes.bounded_concurrency)
         async with httpx.AsyncClient(timeout=config.probes.timeout_seconds,follow_redirects=True,headers={"User-Agent":"cexlatency/0.1 public-benchmark"}) as client:
             async def bounded(awaitable):

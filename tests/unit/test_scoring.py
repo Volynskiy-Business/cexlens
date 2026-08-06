@@ -67,3 +67,10 @@ def test_latency_normalization_is_direction_aware_and_bounded():
     assert 0 < scores["middle"] < 100
     assert scores["slow"] == 0
     assert scores["missing"] == 0
+
+
+def test_timestamp_quality_preserves_measured_out_of_bounds_evidence():
+    ws=[{"exchange_id":"venue","symbol":symbol,"success":True,"messages":1,"timestamp_quality":"MEASURED_OFFSET_OUT_OF_BOUNDS"} for symbol in ("BTCUSDT","ETHUSDT","SOLUSDT")]
+    row=rank([],ws,["venue"],ScoringConfig().weights)[0]
+    assert row["raw_metrics"]["timestamp_quality"] == "MEASURED_OFFSET_OUT_OF_BOUNDS"
+    assert row["raw_metrics"]["timestamp_quality_counts"] == {"MEASURED_OFFSET_OUT_OF_BOUNDS":3}

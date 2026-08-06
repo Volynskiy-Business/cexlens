@@ -33,15 +33,12 @@ async def detect_clock_status() -> ClockStatus:
     system = platform.system()
     if system == "Windows" and shutil.which("w32tm"):
         code, status = await _command("w32tm", "/query", "/status", "/verbose", timeout=10)
-        source_match = re.search(r"^Source:\s*(.+)$", status, re.MULTILINE | re.IGNORECASE)
-        synchronized = code == 0 and "free-running system clock" not in status.lower() and "local cmos clock" not in status.lower()
-        offset = None
-        if synchronized:
-            _, strip = await _command("w32tm", "/stripchart", "/computer:time.windows.com", "/dataonly", "/samples:1", timeout=10)
-            match = re.search(r"([+-]\d+(?:\.\d+)?)s", strip)
-            if match: offset = float(match.group(1)) * 1000
-        verified = synchronized and offset is not None and abs(offset) <= 100
-        return ClockStatus(synchronized, "VERIFIED" if verified else "UNVERIFIED", source_match.group(1).strip() if source_match else None, offset, utc_now(), status[-2000:])
+        _, strip = await _command("w32tm", "/stripchart", "/computer:time.windows.com", "/dataonly", "/samples:1", timeout=10) if code == 0 else (code,"")
+        return _windows_clock_status(code,status,strip,"w32tm")
+    if system != "Windows" and shutil.which("powershell.exe"):
+        code,status=await _command("powershell.exe","-NoProfile","-Command","w32tm /query /status /verbose",timeout=10)
+        _,strip=await _command("powershell.exe","-NoProfile","-Command","w32tm /stripchart /computer:time.windows.com /dataonly /samples:1",timeout=10) if code == 0 else (code,"")
+        if code == 0: return _windows_clock_status(code,status,strip,"Windows host w32tm via WSL")
     if shutil.which("timedatectl"):
         code, output = await _command("timedatectl", "show", "--property=NTPSynchronized", "--property=NTP", "--value", timeout=8)
         values = [line.strip().lower() for line in output.splitlines() if line.strip()]
@@ -49,6 +46,20 @@ async def detect_clock_status() -> ClockStatus:
         quality="SYNCHRONIZED_OFFSET_UNKNOWN" if synchronized else "UNVERIFIED"
         return ClockStatus(synchronized, quality, "systemd-timesyncd" if synchronized else None, None, utc_now(), output[-2000:])
     return ClockStatus(None, "UNKNOWN", None, None, utc_now(), f"No supported clock diagnostic on {system}")
+
+
+def _windows_clock_status(code: int, status: str, strip: str, diagnostic_source: str) -> ClockStatus:
+    source_match=re.search(r"^(?:Source|Источник):\s*(.+)$",status,re.MULTILINE|re.IGNORECASE)
+    lowered=status.lower()
+    unsynchronized=any(marker in lowered for marker in ("free-running system clock","local cmos clock","локальные часы cmos","свободно работающие системные часы"))
+    synchronized=code==0 and not unsynchronized
+    offset_match=re.search(r"([+-]\d+(?:\.\d+)?)s",strip)
+    offset=float(offset_match.group(1))*1000 if offset_match else None
+    if synchronized and offset is not None and abs(offset)<=100: quality="VERIFIED"
+    elif synchronized and offset is not None: quality="MEASURED_OFFSET_OUT_OF_BOUNDS"
+    else: quality="UNVERIFIED"
+    source=source_match.group(1).strip() if source_match else diagnostic_source
+    return ClockStatus(synchronized,quality,source,offset,utc_now(),(status+"\n"+strip)[-3000:])
 
 
 async def trace_route(url: str, max_hops: int = 20, timeout: float = 45) -> str:

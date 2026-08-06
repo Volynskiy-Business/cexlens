@@ -4,7 +4,7 @@ Measurements originate on the local host. DNS time covers resolver completion, T
 
 Fresh and reused HTTP connections are measured separately. The former includes setup overhead; the latter approximates steady-state public API use. Every REST sample records monotonic start/end counters, UTC receive time, rate-limit headers, and an extracted exchange timestamp when the public payload contains one. All durations use the monotonic clock. UTC wall time is used only for event-time comparison and audit timestamps.
 
-Observed timestamp lag equals local UTC receive time minus the exchange event timestamp. Clock skew can dominate it. A synchronized clock without a measured offset is labeled `SYNCHRONIZED_OFFSET_UNKNOWN`, not `VERIFIED`; the metric is never described as true one-way latency without a bounded offset measurement.
+Observed timestamp lag equals local UTC receive time minus the exchange event timestamp. Clock skew can dominate it. Native Windows and WSL deployments query the Windows host through `w32tm`; localized output is supported. A synchronized clock without a measured offset is labeled `SYNCHRONIZED_OFFSET_UNKNOWN`, while a measured offset outside ±100 ms is `MEASURED_OFFSET_OUT_OF_BOUNDS`, never `VERIFIED`. The metric is not described as true one-way latency without a bounded offset measurement.
 
 Campaigns use both a global concurrency bound and a configurable per-exchange semaphore, randomized inter-probe jitter, conservative public endpoints, and short payloads. A seven-day conclusion requires all configured time windows; a smoke run only validates mechanics.
 

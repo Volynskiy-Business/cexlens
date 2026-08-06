@@ -108,6 +108,9 @@ class Storage:
     def _add_error(self, run_id: str, exchange: str, endpoint: str, probe: str, classification: str | None, detail: str | None) -> None:
         self.connection.execute("INSERT INTO errors (run_id,exchange_id,endpoint,probe_type,timestamp,exception_type,retry_number,classification,recoverable,detail) VALUES (?,?,?,?,?,?,?,?,?,?)",(run_id,exchange,endpoint,probe,utc_now(),classification,0,classification,1,detail)); self.connection.commit()
 
+    def add_error(self, run_id: str, exchange: str, endpoint: str, probe: str, classification: str, detail: str | None, retry_number: int = 0, recoverable: bool = True) -> None:
+        self.connection.execute("INSERT INTO errors (run_id,exchange_id,endpoint,probe_type,timestamp,exception_type,retry_number,classification,recoverable,detail) VALUES (?,?,?,?,?,?,?,?,?,?)",(run_id,exchange,endpoint,probe,utc_now(),classification,retry_number,classification,int(recoverable),detail)); self.connection.commit()
+
     def samples(self, run_id: str) -> list[dict[str, Any]]:
         return [dict(r) for r in self.connection.execute("SELECT * FROM probe_samples WHERE run_id=? ORDER BY id", (run_id,))]
 

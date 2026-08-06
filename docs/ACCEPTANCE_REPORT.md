@@ -14,7 +14,7 @@ Implementation status: production-MVP feature set verified; location-specific ac
 | No key / no live order | Verified by design | No credential or order interface exists |
 | Windows 11 native support | Documented | Windows setup guide |
 | Ten live adapters verified | Verified | Run `03bad502ba00`: REST 20/20; WS 30/30; order books and trade-frequency samples 30/30 |
-| Full test suite passes | Verified | 76 passed, 2 opt-in live tests skipped; opt-in live suite 2/2 passed |
+| Full test suite passes | Verified | 80 passed, 2 opt-in live tests skipped; opt-in live suite 2/2 passed |
 | Conservative live smoke run | Verified | Run `03bad502ba00`, zero recorded probe errors |
 | Resumable sample campaign | Verified | `haifa-smoke-acceptance`: one window completed as run `6672d3066fe3`; aggregate report generated |
 | Seven-day Haifa campaign | Pending | Requires elapsed observation windows |

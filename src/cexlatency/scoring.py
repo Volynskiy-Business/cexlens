@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 import statistics
 from typing import Any
 
@@ -64,6 +64,7 @@ def rank(samples: list[dict[str, Any]], websocket_rows: list[dict[str, Any]], ex
             values=[float(row[key]) for row in ws_rows if row.get(key) is not None]
             return sum(values)/len(values) if values else None
         qualities=[row.get("timestamp_quality") for row in ws_rows if row.get("timestamp_quality")]
+        quality_counts=dict(Counter(str(value) for value in qualities))
         ws_messages=sum(int(row.get("messages",0)) for row in ws_rows)
         ws_observation_seconds=sum(float(row.get("observation_seconds",0) or 0) for row in ws_rows)
         ws_bad_events=sum(int(row.get(key,0)) for row in ws_rows for key in ("malformed_messages","sequence_gaps","duplicate_messages","stale_periods"))
@@ -71,7 +72,8 @@ def rank(samples: list[dict[str, Any]], websocket_rows: list[dict[str, Any]], ex
         ws_success_rate=ws_success_count/len(ws_rows) if ws_rows else 0.0
         ws_disconnects=sum(int(row.get("disconnects",0)) for row in ws_rows)
         ws_instability=100*(1-ws_success_rate)+25*ws_disconnects/max(len(ws_rows),1)+100*ws_bad_events/max(ws_messages,1)
-        w={"handshake_ms":ws_average("handshake_ms"),"ack_ms":ws_average("ack_ms"),"first_message_ms":ws_average("first_message_ms"),"p95_interval_ms":ws_average("p95_interval_ms"),"disconnects":ws_disconnects,"reconnect_ms":ws_average("reconnect_ms"),"heartbeat_rtt_ms":ws_average("heartbeat_rtt_ms"),"message_rate_hz":ws_average("message_rate_hz"),"median_observed_lag_ms":ws_average("median_observed_lag_ms"),"timestamp_quality":"VERIFIED" if qualities and all(q=="VERIFIED" for q in qualities) else "UNKNOWN"}
+        aggregate_quality="VERIFIED" if qualities and all(q=="VERIFIED" for q in qualities) else (str(qualities[0]) if len(set(qualities))==1 else "MIXED" if qualities else "UNKNOWN")
+        w={"handshake_ms":ws_average("handshake_ms"),"ack_ms":ws_average("ack_ms"),"first_message_ms":ws_average("first_message_ms"),"p95_interval_ms":ws_average("p95_interval_ms"),"disconnects":ws_disconnects,"reconnect_ms":ws_average("reconnect_ms"),"heartbeat_rtt_ms":ws_average("heartbeat_rtt_ms"),"message_rate_hz":ws_average("message_rate_hz"),"median_observed_lag_ms":ws_average("median_observed_lag_ms"),"timestamp_quality":aggregate_quality}
         markets=market_grouped[ex]
         all_markets=market_all[ex]
         market_success_rate=sum(bool(row.get("success")) for row in all_markets)/len(all_markets) if all_markets else 0.0
@@ -86,7 +88,7 @@ def rank(samples: list[dict[str, Any]], websocket_rows: list[dict[str, Any]], ex
         volumes=[m["quote_volume_24h"] for m in markets if m.get("quote_volume_24h") is not None]
         trade_frequencies=[m["trade_frequency_hz"] for m in markets if m.get("trade_frequency_hz") is not None]
         counts=[m["futures_market_count"] for m in markets if m.get("futures_market_count") is not None]
-        raw[ex]={"tcp_median":tcp_stat.get("median"),"rest_median":stat.get("median"),"rest_p95":stat.get("p95"),"rest_p99":stat.get("p99"),"jitter":stat.get("jitter"),"success_rate":stat.get("success_rate",0.0),"combined_success_rate":combined_success_rate,"network_success_rate":network_success_rate,"endpoint_coverage":endpoint_coverage,"cross_window_rest_p95_cv":cross_window_cv,"sample_count":stat.get("success_count",0),"ws_handshake_ms":w.get("handshake_ms"),"ws_ack_ms":w.get("ack_ms"),"ws_first_message_ms":w.get("first_message_ms"),"ws_interval_p95":w.get("p95_interval_ms"),"ws_disconnects":w.get("disconnects",0),"ws_reconnect_ms":w.get("reconnect_ms"),"ws_heartbeat_rtt_ms":w.get("heartbeat_rtt_ms"),"ws_message_rate_hz":w.get("message_rate_hz"),"ws_sessions":len(ws_rows),"ws_observation_seconds":ws_observation_seconds,"ws_symbol_count":len({row.get("symbol") for row in ws_rows if row.get("success") and row.get("symbol")}),"ws_success_rate":ws_success_rate,"ws_messages":ws_messages,"ws_bad_events":ws_bad_events,"ws_instability":ws_instability if ws_rows else None,"observed_lag_ms":w.get("median_observed_lag_ms"),"timestamp_quality":w.get("timestamp_quality"),"market_success_rate":market_success_rate,"spread_bps":sum(spreads)/len(spreads) if spreads else None,"depth_10bps":sum(depths)/len(depths) if depths else None,"quote_volume_24h":sum(volumes)/len(volumes) if volumes else None,"trade_frequency_hz":sum(trade_frequencies)/len(trade_frequencies) if trade_frequencies else None,"market_count":max(counts) if counts else None,"market_symbols":len({m.get("symbol") for m in markets if m.get("symbol")})}
+        raw[ex]={"tcp_median":tcp_stat.get("median"),"rest_median":stat.get("median"),"rest_p95":stat.get("p95"),"rest_p99":stat.get("p99"),"jitter":stat.get("jitter"),"success_rate":stat.get("success_rate",0.0),"combined_success_rate":combined_success_rate,"network_success_rate":network_success_rate,"endpoint_coverage":endpoint_coverage,"cross_window_rest_p95_cv":cross_window_cv,"sample_count":stat.get("success_count",0),"ws_handshake_ms":w.get("handshake_ms"),"ws_ack_ms":w.get("ack_ms"),"ws_first_message_ms":w.get("first_message_ms"),"ws_interval_p95":w.get("p95_interval_ms"),"ws_disconnects":w.get("disconnects",0),"ws_reconnect_ms":w.get("reconnect_ms"),"ws_heartbeat_rtt_ms":w.get("heartbeat_rtt_ms"),"ws_message_rate_hz":w.get("message_rate_hz"),"ws_sessions":len(ws_rows),"ws_observation_seconds":ws_observation_seconds,"ws_symbol_count":len({row.get("symbol") for row in ws_rows if row.get("success") and row.get("symbol")}),"ws_success_rate":ws_success_rate,"ws_messages":ws_messages,"ws_bad_events":ws_bad_events,"ws_instability":ws_instability if ws_rows else None,"observed_lag_ms":w.get("median_observed_lag_ms"),"timestamp_quality":w.get("timestamp_quality"),"timestamp_quality_counts":quality_counts,"market_success_rate":market_success_rate,"spread_bps":sum(spreads)/len(spreads) if spreads else None,"depth_10bps":sum(depths)/len(depths) if depths else None,"quote_volume_24h":sum(volumes)/len(volumes) if volumes else None,"trade_frequency_hz":sum(trade_frequencies)/len(trade_frequencies) if trade_frequencies else None,"market_count":max(counts) if counts else None,"market_symbols":len({m.get("symbol") for m in markets if m.get("symbol")})}
     spread_score=_lower_is_better({e:r["spread_bps"] for e,r in raw.items()})
     depth_score=_higher_is_better({e:(__import__("math").log1p(r["depth_10bps"]) if r["depth_10bps"] is not None else None) for e,r in raw.items()})
     volume_score=_higher_is_better({e:(__import__("math").log1p(r["quote_volume_24h"]) if r["quote_volume_24h"] is not None else None) for e,r in raw.items()})

@@ -36,6 +36,13 @@ def test_structured_route_round_trip(tmp_path):
     assert routes[0]["summary"] == {"hop_count":3,"route_fingerprint":"abc"}
 
 
+def test_explicit_clock_quality_error_is_persisted(tmp_path):
+    with Storage(tmp_path/"errors.db") as store:
+        store.add_error("run","__host__","local-clock","clock","CLOCK_QUALITY_UNKNOWN","offset unavailable")
+        row=store.connection.execute("SELECT classification,recoverable,detail FROM errors").fetchone()
+    assert tuple(row) == ("CLOCK_QUALITY_UNKNOWN",1,"offset unavailable")
+
+
 def test_retention_prunes_only_unreferenced_old_runs(tmp_path):
     with Storage(tmp_path/"retention.db") as store:
         for run_id in ("old","campaign-old","new"):
