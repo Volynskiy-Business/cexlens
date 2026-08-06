@@ -19,7 +19,7 @@ def test_sqlite_round_trip_and_all_report_formats(tmp_path):
     summary=json.loads((tmp_path / "reports" / "run1" / "summary.json").read_text())
     assert summary["recommendation"] == "binance"
     assert summary["recommendations"]["winner_rationale"]["confidence"] == "MEDIUM"
-    dashboard=(tmp_path / "reports" / "run1" / "dashboard.html").read_text()
+    dashboard=(tmp_path / "reports" / "run1" / "dashboard.html").read_text(encoding="utf-8")
     for section in ("Executive Overview","Exchange Ranking","Latency Distribution","Tail Latency","WebSocket Stability","Time-of-Day Comparison","Route Diagnostics","Order-Book Quality","Futures Coverage","Raw Evidence","Methodology","Limitations","Jitter Over Time","Reconnect Duration"):
         assert section in dashboard
 
