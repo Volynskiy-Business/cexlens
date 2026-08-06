@@ -41,6 +41,7 @@ def parser() -> argparse.ArgumentParser:
     b=command("benchmark"); b.add_argument("--exchange",action="append"); b.add_argument("--group",default="priority"); b.add_argument("--iterations",type=int); b.add_argument("--duration",type=parse_duration); b.add_argument("--ws-duration",type=int); b.add_argument("--dry-run",action="store_true")
     c=command("campaign"); c.add_argument("--dry-run",action="store_true"); c.add_argument("--iterations",type=int); c.add_argument("--ws-duration",type=int); c.add_argument("--group",default="priority"); c.add_argument("--max-windows",type=int,default=1); c.add_argument("--daemon",action="store_true"); c.add_argument("--poll-seconds",type=int,default=30); c.add_argument("--start-date",type=date.fromisoformat)
     r=command("report"); r.add_argument("--run-id"); r.add_argument("--campaign")
+    s=command("status"); s.add_argument("--campaign")
     command("validate")
     x=command("compare"); x.add_argument("--run-id",action="append",required=True)
     return p
@@ -57,14 +58,25 @@ async def _async_main(args: argparse.Namespace) -> int:
         effective_iterations=args.iterations or (1 if args.duration else config.probes.iterations)
         effective_ws=args.ws_duration if args.ws_duration is not None else (min(args.duration,config.probes.websocket_observation_seconds) if args.duration else config.probes.websocket_observation_seconds)
         if getattr(args,"dry_run",False): print(json.dumps({"exchanges":exchanges,"iterations_minimum":effective_iterations,"duration_seconds":args.duration,"websocket_seconds":effective_ws},indent=2)); return 0
-        run_id,paths,rankings=await benchmark(config,exchanges,effective_iterations,effective_ws,lambda s: None if args.json_output else print(s),args.duration)
+        run_id,paths,rankings=await benchmark(config,exchanges,effective_iterations,effective_ws,lambda s: None if args.json_output else print(s,flush=True),args.duration)
         result={"run_id":run_id,"reports":paths,"rankings":rankings}; print(json.dumps(result,indent=2) if args.json_output else f"Run {run_id} complete\n"+"\n".join(f"{i}. {r['exchange_id']} {r['overall_score']:.1f} ({r['confidence']})" for i,r in enumerate(rankings,1))); return 0
     if args.command=="campaign":
         exchanges=config.selected_exchanges(args.group)
         if args.dry_run:
             print(json.dumps({"campaign":config.campaign.model_dump(),"schedule":[{"utc":u,"local":l} for u,l in build_schedule(config,args.start_date)],"exchanges":exchanges},indent=2,default=str)); return 0
-        result=await run_campaign(config,exchanges,args.iterations,args.ws_duration,args.max_windows,args.daemon,args.poll_seconds,lambda s: None if args.json_output else print(s),args.start_date)
+        result=await run_campaign(config,exchanges,args.iterations,args.ws_duration,args.max_windows,args.daemon,args.poll_seconds,lambda s: None if args.json_output else print(s,flush=True),args.start_date)
         print(json.dumps(result,indent=2)); return 0
+    if args.command=="status":
+        name=args.campaign or config.campaign.name
+        with Storage(config.storage_path) as store:
+            windows=store.campaign_windows(name); definition=store.campaign_definition(name)
+            result={"campaign":name,"definition":definition,"summary":store.campaign_summary(name),"next_window_utc":store.next_campaign_window(name),"completed_run_ids":store.campaign_run_ids(name),"windows":windows}
+        if args.json_output: print(json.dumps(result,indent=2))
+        else:
+            print(f"Campaign {name}: "+", ".join(f"{k}={v}" for k,v in result["summary"].items()))
+            print(f"Next window UTC: {result['next_window_utc'] or 'none'}")
+            for row in windows: print(f"{row['local_label']}  {row['status']:9}  attempts={row['attempts']}  run={row['run_id'] or '-'}")
+        return 0
     if args.command=="report":
         with Storage(config.storage_path) as store:
             if args.campaign:

@@ -174,6 +174,9 @@ class Storage:
     def campaign_run_ids(self, campaign_name: str) -> list[str]:
         return [r[0] for r in self.connection.execute("SELECT run_id FROM campaign_windows WHERE campaign_name=? AND status='COMPLETED' AND run_id IS NOT NULL ORDER BY window_utc",(campaign_name,))]
 
+    def campaign_windows(self, campaign_name: str) -> list[dict[str, Any]]:
+        return [dict(r) for r in self.connection.execute("SELECT window_utc,local_label,status,run_id,attempts,last_error,updated_at FROM campaign_windows WHERE campaign_name=? ORDER BY window_utc",(campaign_name,))]
+
     def samples_for_runs(self, run_ids: list[str]) -> list[dict[str, Any]]:
         return [sample for run_id in run_ids for sample in self.samples(run_id)]
 

@@ -32,6 +32,7 @@ def test_campaign_window_claim_completion_and_resume(tmp_path):
         assert store.campaign_summary("c")["COMPLETED"] == 1
         assert store.campaign_run_ids("c") == ["run42"]
         assert store.campaign_window_count("c") == 2
+        assert store.campaign_windows("c")[0]["run_id"] == "run42"
 
 
 def test_schema_migration_adds_reproducibility_metadata(tmp_path):

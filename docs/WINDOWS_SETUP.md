@@ -21,4 +21,6 @@ To schedule a clean future start, pass the local calendar date explicitly, for e
 
 After completed windows, generate the aggregate dashboard with `cexlatency report --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
 
+Inspect progress at any time with `cexlatency status --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
+
 `tracert <hostname>` may be captured manually for route diagnosis. It is never treated as matching-engine latency. Docker is optional and not required.

@@ -48,6 +48,7 @@ Global options such as `--config` and `--json` precede the command. Generated da
 | `benchmark` | Run bounded one-shot probes for an exchange or group |
 | `campaign` | Claim and execute resumable UTC/local campaign windows |
 | `report` | Regenerate one run or aggregate a completed campaign |
+| `status` | Inspect immutable campaign definition, windows, attempts, and run IDs |
 | `compare` | Compare two score snapshots |
 | `validate` | Deterministically validate config, registry, and safety state |
 
