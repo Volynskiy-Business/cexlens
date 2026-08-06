@@ -15,9 +15,10 @@ function Write-WatchdogLog([string]$Message) {
 
 try {
     $resolvedRoot = (Resolve-Path -LiteralPath $root).Path
-    if ($resolvedRoot -notmatch '^([A-Za-z]):\\(.*)$') { throw 'The project must be stored on a Windows drive visible to WSL.' }
-    $drive = $Matches[1].ToLowerInvariant()
-    $relativeRoot = $Matches[2].Replace('\', '/')
+    $pathMatch = [regex]::Match($resolvedRoot, '^([A-Za-z]):\\(.*)$')
+    if (-not $pathMatch.Success) { throw 'The project must be stored on a Windows drive visible to WSL.' }
+    $drive = $pathMatch.Groups[1].Value.ToLowerInvariant()
+    $relativeRoot = $pathMatch.Groups[2].Value.Replace('\', '/')
     $wslRoot = "/mnt/$drive/$relativeRoot"
     if ($wslRoot.Contains("'")) { throw 'Project path containing an apostrophe is unsupported.' }
 
