@@ -6,4 +6,6 @@ The host record contains only an anonymized host ID, a host-salted SHA-256 publi
 
 `HIGH` confidence requires broad sampling, very high success, multiple daily windows, and, where timestamp lag is used, verified clock quality. A single smoke run will normally remain `LOW` or `INSUFFICIENT`.
 
+Campaign windows have an explicit grace period. A pending window older than that period becomes `MISSED` and is never relabeled with late measurements. The complete campaign definition is SHA-256 fingerprinted and immutable under its name.
+
 Endpoint reachability, HTTP status, sample size, tail behavior, and evidence coverage should be inspected before acting on a ranking. Exchange-provided volume or timestamps are not independently audited.

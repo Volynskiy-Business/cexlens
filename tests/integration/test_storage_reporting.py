@@ -41,3 +41,15 @@ def test_schema_migration_adds_reproducibility_metadata(tmp_path):
     with Storage(db) as store:
         columns={row[1] for row in store.connection.execute("PRAGMA table_info(hosts)")}
     assert {"network_interface","isp_name"} <= columns
+
+
+def test_campaign_definition_is_immutable_and_old_windows_expire(tmp_path):
+    import pytest
+    with Storage(tmp_path/"campaign.db") as store:
+        store.ensure_campaign_definition("c","hash1",{"version":1})
+        store.ensure_campaign_definition("c","hash1",{"version":1})
+        with pytest.raises(ValueError,match="CONFIGURATION_ERROR"):
+            store.ensure_campaign_definition("c","hash2",{"version":2})
+        store.ensure_campaign_windows("c",[("2026-01-01T00:00:00+00:00","local")])
+        assert store.expire_campaign_windows("c","2026-01-01T01:00:00+00:00") == 1
+        assert store.campaign_summary("c")["MISSED"] == 1

@@ -15,6 +15,8 @@ Run a smoke campaign with `cexlatency benchmark --config config/smoke.yaml --gro
 
 For periodic runs, create a Windows Task Scheduler action targeting `.venv\Scripts\cexlatency.exe` with arguments `campaign --config config/haifa-7day.yaml` and set the working directory to the repository root. Create six daily triggers corresponding to the YAML windows. Each invocation atomically claims at most one due window and resumes interrupted state. Alternatively, run `cexlatency campaign --config config/haifa-7day.yaml --daemon --max-windows 42` in a supervised terminal.
 
+The production config allows a 30-minute claim grace period. If the computer is asleep beyond it, the window becomes `MISSED` instead of contaminating the intended time-of-day sample. Use a new campaign name to restart with a changed definition.
+
 After completed windows, generate the aggregate dashboard with `cexlatency report --config config/haifa-7day.yaml --campaign haifa-home-baseline`.
 
 `tracert <hostname>` may be captured manually for route diagnosis. It is never treated as matching-engine latency. Docker is optional and not required.

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -36,7 +38,10 @@ async def run_campaign(
 ) -> dict[str, Any]:
     name = config.campaign.name
     completed_runs: list[str] = []
+    definition=config.model_dump()
+    definition_hash=hashlib.sha256(json.dumps(definition,sort_keys=True,separators=(",",":")).encode()).hexdigest()
     with Storage(config.storage_path) as store:
+        store.ensure_campaign_definition(name,definition_hash,definition)
         if store.campaign_window_count(name)==0:
             store.ensure_campaign_windows(name, build_schedule(config))
         recovered = store.resume_campaign(name)
@@ -44,6 +49,9 @@ async def run_campaign(
     processed = 0
     while processed < max_windows:
         with Storage(config.storage_path) as store:
+            cutoff=(datetime.now(timezone.utc)-timedelta(minutes=config.campaign.window_grace_minutes)).isoformat()
+            expired=store.expire_campaign_windows(name,cutoff)
+            if expired: progress(f"Marked {expired} campaign window(s) MISSED after grace period")
             due = store.due_campaign_windows(name, utc_now(), 1)
             summary = store.campaign_summary(name)
             next_window = store.next_campaign_window(name)

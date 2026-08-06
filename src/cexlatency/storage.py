@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS score_snapshots (id INTEGER PRIMARY KEY, run_id TEXT 
 CREATE TABLE IF NOT EXISTS report_artifacts (id INTEGER PRIMARY KEY, run_id TEXT NOT NULL, kind TEXT NOT NULL, path TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS errors (id INTEGER PRIMARY KEY, run_id TEXT, exchange_id TEXT, endpoint TEXT, probe_type TEXT, timestamp TEXT, exception_type TEXT, retry_number INTEGER, classification TEXT, recoverable INTEGER, detail TEXT);
 CREATE TABLE IF NOT EXISTS campaign_windows (campaign_name TEXT NOT NULL, window_utc TEXT NOT NULL, local_label TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'PENDING', run_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, updated_at TEXT NOT NULL, PRIMARY KEY(campaign_name, window_utc));
+CREATE TABLE IF NOT EXISTS campaign_definitions (campaign_name TEXT PRIMARY KEY, definition_hash TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL);
 """
 
 
@@ -124,11 +125,23 @@ class Storage:
         )
         self.connection.commit()
 
+    def ensure_campaign_definition(self, campaign_name: str, definition_hash: str, config: dict[str, Any]) -> None:
+        row=self.connection.execute("SELECT definition_hash FROM campaign_definitions WHERE campaign_name=?",(campaign_name,)).fetchone()
+        if row and row[0] != definition_hash:
+            raise ValueError(f"CONFIGURATION_ERROR: campaign {campaign_name!r} already exists with a different immutable definition")
+        self.connection.execute("INSERT OR IGNORE INTO campaign_definitions (campaign_name,definition_hash,config_json,created_at) VALUES (?,?,?,?)",(campaign_name,definition_hash,json.dumps(config,sort_keys=True),utc_now()))
+        self.connection.commit()
+
     def campaign_window_count(self, campaign_name: str) -> int:
         return int(self.connection.execute("SELECT count(*) FROM campaign_windows WHERE campaign_name=?",(campaign_name,)).fetchone()[0])
 
     def resume_campaign(self, campaign_name: str) -> int:
         cursor = self.connection.execute("UPDATE campaign_windows SET status='PENDING',last_error='Recovered after interrupted process',updated_at=? WHERE campaign_name=? AND status='RUNNING'", (utc_now(), campaign_name))
+        self.connection.commit()
+        return cursor.rowcount
+
+    def expire_campaign_windows(self, campaign_name: str, cutoff_utc: str) -> int:
+        cursor=self.connection.execute("UPDATE campaign_windows SET status='MISSED',last_error='Window grace period elapsed before claim',updated_at=? WHERE campaign_name=? AND status='PENDING' AND window_utc<?",(utc_now(),campaign_name,cutoff_utc))
         self.connection.commit()
         return cursor.rowcount
 
@@ -145,7 +158,7 @@ class Storage:
         self.connection.commit()
 
     def campaign_summary(self, campaign_name: str) -> dict[str, int]:
-        result = {"PENDING":0,"RUNNING":0,"COMPLETED":0,"FAILED":0}
+        result = {"PENDING":0,"RUNNING":0,"COMPLETED":0,"FAILED":0,"MISSED":0}
         for status,count in self.connection.execute("SELECT status,count(*) FROM campaign_windows WHERE campaign_name=? GROUP BY status", (campaign_name,)):
             result[status]=count
         return result
